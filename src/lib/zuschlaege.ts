@@ -41,6 +41,29 @@ export function shiftMinutesAfter20(shift: Shift): number {
   return Math.min(shift.paidMinutes, after20);
 }
 
+export type HourStats = { total: number; night: number; sunday: number };
+
+/**
+ * Summen (Minuten) einer Person über die angegebenen Tage – für die
+ * „Stundenübersicht". Nacht = ab 20:00 an Mo–Sa; Sonntag = die ganze bezahlte
+ * Zeit am Sonntag, NICHT zusätzlich als Nacht gezählt.
+ */
+export function hourStatsFor(
+  shifts: readonly Shift[],
+  employeeId: string,
+  dates: readonly string[],
+): HourStats {
+  const inRange = new Set(dates);
+  const stats: HourStats = { total: 0, night: 0, sunday: 0 };
+  for (const shift of shifts) {
+    if (shift.employeeId !== employeeId || !inRange.has(shift.date)) continue;
+    stats.total += shift.paidMinutes;
+    stats.night += shiftMinutesAfter20(shift);
+    if (weekdayKeyOf(parseIsoDate(shift.date)) === "sunday") stats.sunday += shift.paidMinutes;
+  }
+  return stats;
+}
+
 export type ZuschlagTotals = {
   after20Minutes: number;
   sundayMinutes: number;
