@@ -31,6 +31,7 @@ import { isEmployeeFixedDayOff, normalizedFixedDaysOff } from "../lib/fixedDaysO
 import { withEmploymentPeriodTarget } from "../lib/employmentPeriod";
 import { isEmployeeAvailableOn } from "../lib/availability";
 import { withMonthRoles } from "../lib/roleCoverage";
+import { mergeEmployees } from "../lib/employeeFile";
 import { applyRoleChanges, type RoleChange } from "../lib/suggestions";
 import { listSavedMonths, mergeArchives, monthKey, switchMonth } from "../lib/monthArchive";
 
@@ -368,6 +369,17 @@ export function useSchedule() {
     }));
   }, [storeId]);
 
+  /** „Nhập file": Nhân viên aus einer Sicherung übernehmen (anhängen oder ersetzen). */
+  const importEmployees = useCallback((incoming: Employee[], mode: "add" | "replace") => {
+    setSchedule((s) => {
+      const employees = mergeEmployees(s.employees, incoming, mode).map((e) =>
+        normalizeEmployee(e, s.year, s.month),
+      );
+      const ids = new Set(employees.map((e) => e.id));
+      return { ...s, employees, shifts: s.shifts.filter((sh) => ids.has(sh.employeeId)) };
+    });
+  }, []);
+
   const removeEmployee = useCallback((id: string) => {
     setSchedule((s) => ({
       ...s,
@@ -556,6 +568,7 @@ export function useSchedule() {
     addEmployee,
     updateEmployee,
     removeEmployee,
+    importEmployees,
     generate,
     resetToOriginal,
     resetAll,

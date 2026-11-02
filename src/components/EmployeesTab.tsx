@@ -12,6 +12,7 @@ import {
 } from "../types";
 import { splitTargetHours, teilzeitShiftCount } from "../lib/splitTargetHours";
 import { describePreferredWindow, preferredWindowsOf } from "../lib/preferredWindows";
+import { employeesToFile, parseEmployeesFile } from "../lib/employeeFile";
 import { minutesToTime, timeToMinutes } from "../lib/time";
 import {
   activeDaysInMonth,
@@ -184,7 +185,37 @@ export function EmployeesTab({ store }: { store: UseScheduleReturn }) {
 }
 
 function EmployeesList({ store }: { store: UseScheduleReturn }) {
-  const { schedule, addEmployee, updateEmployee, removeEmployee } = store;
+  const { schedule, addEmployee, updateEmployee, removeEmployee, importEmployees } = store;
+  const [pendingImport, setPendingImport] = useState<Employee[] | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  const exportFile = () => {
+    const blob = new Blob([employeesToFile(schedule.employees)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nhan_vien_${schedule.year}-${String(schedule.month).padStart(2, "0")}.json`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      a.remove();
+      URL.revokeObjectURL(url);
+    }, 60_000);
+  };
+  const readFile = async (file: File | undefined) => {
+    if (!file) return;
+    setImportError(null);
+    try {
+      setPendingImport(parseEmployeesFile(await file.text()));
+    } catch (e) {
+      setPendingImport(null);
+      setImportError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const applyImport = (mode: "add" | "replace") => {
+    if (pendingImport) importEmployees(pendingImport, mode);
+    setPendingImport(null);
+  };
 
   const [offen, setOffen] = useState<null | "new" | string>(null);
   const bearbeitet = useMemo(
@@ -213,9 +244,65 @@ function EmployeesList({ store }: { store: UseScheduleReturn }) {
           + Thêm
         </button>
       </div>
-      <p className="mb-4 text-xs text-slate-500">
+      <p className="mb-3 text-xs text-slate-500">
         Bấm vào một người để sửa. Azubi: kỳ học và giờ từng tháng cài ngay trong đó.
       </p>
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+        <button
+          type="button"
+          onClick={exportFile}
+          disabled={schedule.employees.length === 0}
+          className="rounded-lg border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+        >
+          Xuất file
+        </button>
+        <label className="cursor-pointer rounded-lg border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50">
+          Nhập file
+          <input
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => {
+              void readFile(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+        </label>
+        <span className="text-xs text-slate-400">Lưu danh sách ra file để lỡ xoá thì nhập lại được.</span>
+      </div>
+      {importError && (
+        <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{importError}</p>
+      )}
+      {pendingImport && (
+        <div className="mb-4 space-y-2 rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm">
+          <p className="text-slate-700">
+            File có <b>{pendingImport.length} nhân viên</b>: {pendingImport.map((e) => e.name).join(", ")}.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => applyImport("add")}
+              className="rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-700"
+            >
+              Thêm người còn thiếu
+            </button>
+            <button
+              type="button"
+              onClick={() => applyImport("replace")}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50"
+            >
+              Thay cả danh sách
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingImport(null)}
+              className="rounded-lg px-3 py-1.5 text-slate-500 hover:bg-white"
+            >
+              Huỷ
+            </button>
+          </div>
+        </div>
+      )}
 
       {schedule.employees.length === 0 ? (
         <div className="py-8 text-center text-slate-400">
