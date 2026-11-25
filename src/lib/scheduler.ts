@@ -73,6 +73,7 @@ import {
   thienlongStaffingProfile,
 } from "./thienlongDemand";
 import { usesRolePlanning } from "./stores";
+import { taperLateEvening } from "./maisenPeak";
 
 export type GenerateInput = {
   year: number;
@@ -3289,6 +3290,10 @@ export function generateSchedule(input: GenerateInput): Shift[] {
   }
   // Längen zweier Kollegen über zwei Tage tauschen → mehr „ca chuẩn".
   if (!input.quick) rebalanceForStandardShifts(state);
+  // Mai Sen: 20:00–Schluss nie voller als 17:00–20:00 (Abendspitze).
+  if (input.storeId === "maisen") {
+    taperLateEvening(state.shifts, (id) => state.employeesById.get(id)?.workRole, state.dayOf);
+  }
 
   // Stabil sortieren: nach Datum, dann Startzeit, dann Mitarbeiter.
   state.shifts.sort(

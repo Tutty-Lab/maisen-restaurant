@@ -135,3 +135,30 @@ describe("Mai Sen: two owners are always there and stand in as Bồi", () => {
     expect(check.some((e) => e.date === date && e.message.includes("không có Bếp"))).toBe(true);
   });
 });
+
+describe("Mai Sen evening peak: 20:00–close is not busier than 17:00–20:00", () => {
+  const roleOf = (id: string) => team.find((e) => e.id === id)!.workRole!;
+  const count = (date: string, role: string, t: number) =>
+    shifts.filter(
+      (s) => s.date === date && roleOf(s.employeeId) === role &&
+        (s.segments ?? [s]).some((g) => g.startMinutes <= t && g.endMinutes >= t + 30),
+    ).length;
+  const mean = (date: string, role: string, from: number, to: number) => {
+    const ts: number[] = [];
+    for (let t = from; t + 30 <= to; t += 30) ts.push(t);
+    return ts.reduce((a, t) => a + count(date, role, t), 0) / ts.length;
+  };
+
+  it("keeps late evening at most as busy as early evening on (almost) every day", () => {
+    const dates = [...new Set(shifts.map((s) => s.date))];
+    for (const role of ["KITCHEN", "SERVICE"]) {
+      const worse = dates.filter((d) => {
+        const blocks = resolveDay(workHours, d, holidays).blocks;
+        const close = blocks[blocks.length - 1].endMinutes;
+        return mean(d, role, 20 * 60, close) > mean(d, role, 17 * 60, 20 * 60) + 1e-9;
+      });
+      // Ausnahme nur, wenn die letzte Person ohnehin bis Schluss bleiben muss.
+      expect(worse.length, `${role}: ${worse.join(", ")}`).toBeLessThanOrEqual(2);
+    }
+  });
+});
