@@ -197,3 +197,22 @@ describe("Mai Sen: fixed days off are optional – the planner picks rest days i
     expect(p.filter((s) => s.employeeId === "s1").some((s) => new Date(`${s.date}T12:00:00`).getDay() === 2)).toBe(false);
   });
 });
+
+describe("Mai Sen: everyone gets at least 1 day off every calendar week", () => {
+  // Mai 2027: Pfingstmontag 17.05. ist ein offener Feiertags-Montag → 7 offene Tage in der Woche.
+  const may = generateSchedule({ year: 2027, month: 5, storeId: "maisen", workHours, employees: team, holidayState: "NW" });
+  const monday = (iso: string) => {
+    const d = new Date(`${iso}T12:00:00`);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return d.toDateString();
+  };
+
+  it("never plans 7 days in one week, even with an open holiday Monday", () => {
+    expect(may.some((s) => s.date === "2027-05-17")).toBe(true);
+    for (const e of team) {
+      const perWeek = new Map<string, number>();
+      for (const s of may.filter((x) => x.employeeId === e.id)) perWeek.set(monday(s.date), (perWeek.get(monday(s.date)) ?? 0) + 1);
+      for (const [week, days] of perWeek) expect(days, `${e.name} ${week}`).toBeLessThanOrEqual(6);
+    }
+  });
+});
