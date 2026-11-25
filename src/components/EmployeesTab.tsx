@@ -951,31 +951,34 @@ function EmployeeSheet({
           )}
 
           {isAzubi && (
-            <SheetSection title="Kỳ học (đi học không xếp ca)">
-              <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2.5">
-                <span className="text-sm text-slate-700">Có lịch đi học</span>
-                <input
-                  type="checkbox"
-                  checked={d.azubi.inSchoolTerm && hasTermDates}
-                  onChange={(e) =>
-                    setAzubi(
-                      e.target.checked
-                        ? {
-                            inSchoolTerm: true,
-                            schoolTermStart: d.azubi.schoolTermStart ?? monthDates[0],
-                            schoolTermEnd: d.azubi.schoolTermEnd ?? monthDates[monthDates.length - 1],
-                          }
-                        : { inSchoolTerm: false, schoolTermStart: undefined, schoolTermEnd: undefined },
-                    )
-                  }
-                  className="h-6 w-6 rounded border-slate-300"
-                />
-              </label>
-              {d.azubi.inSchoolTerm && hasTermDates && (
+            <SheetSection title="Đi học ở trường (Berufsschule)">
+              {!(d.azubi.inSchoolTerm && hasTermDates) ? (
                 <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAzubi({
+                        inSchoolTerm: true,
+                        schoolTermStart: d.azubi.schoolTermStart ?? monthDates[0],
+                        schoolTermEnd: d.azubi.schoolTermEnd ?? monthDates[monthDates.length - 1],
+                      })
+                    }
+                    className="w-full rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-left text-sm text-slate-600"
+                  >
+                    + Thêm đợt đi học <span className="text-slate-400">(học liền nhiều tuần)</span>
+                  </button>
+                  <p className="text-xs text-slate-500">
+                    Chưa có đợt học nào → app xếp ca bình thường.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-slate-500">
+                    Trong những ngày đi học, app <b>không xếp ca</b> cho bạn này.
+                  </p>
                   <div className="grid grid-cols-2 gap-3">
                     <label className="block">
-                      <FieldLabel>Từ ngày</FieldLabel>
+                      <FieldLabel>Đi học từ ngày</FieldLabel>
                       <input
                         type="date"
                         className={`${inputClass} w-full`}
@@ -1002,29 +1005,42 @@ function EmployeeSheet({
                       return (
                         <div
                           key={key}
-                          className={`flex items-center gap-3 px-3 py-2 ${y === year && m === month ? "bg-slate-50" : ""}`}
+                          className={`px-3 py-2 ${y === year && m === month ? "bg-slate-50" : ""}`}
                         >
-                          <span className="w-20 shrink-0 text-sm font-medium text-slate-700">
-                            {m}/{y}
-                          </span>
-                          {mode === "school" ? (
-                            <span className="text-sm text-slate-400">0h · đi học cả tháng</span>
-                          ) : (
-                            <div className="flex-1">
-                              <HoursInput
-                                decimal
-                                placeholder="Nhập giờ"
-                                warn={d.azubi.monthlyHoursByMonth?.[key] === undefined}
-                                value={String(d.azubi.monthlyHoursByMonth?.[key] ?? "")}
-                                onChange={(v) => setMonthMap("monthlyHoursByMonth", key, v)}
-                              />
-                            </div>
+                          <div className="flex items-center gap-3">
+                            <span className="w-20 shrink-0 text-sm font-medium text-slate-700">
+                              Tháng {m}/{y}
+                            </span>
+                            {mode === "school" ? (
+                              <span className="text-sm text-slate-500">Đi học cả tháng → không xếp ca</span>
+                            ) : (
+                              <div className="flex-1">
+                                <HoursInput
+                                  decimal
+                                  placeholder="Giờ làm"
+                                  warn={d.azubi.monthlyHoursByMonth?.[key] === undefined}
+                                  value={String(d.azubi.monthlyHoursByMonth?.[key] ?? "")}
+                                  onChange={(v) => setMonthMap("monthlyHoursByMonth", key, v)}
+                                />
+                              </div>
+                            )}
+                          </div>
+                          {mode !== "school" && (
+                            <p className="mt-1 text-[11px] text-slate-400">
+                              Vừa học vừa làm – nhập số giờ đi làm ở quán trong tháng này.
+                            </p>
                           )}
                         </div>
                       );
                     })}
                   </div>
-                  <p className="text-xs text-slate-500">Tháng vừa học vừa làm: nhập số giờ làm của tháng đó.</p>
+                  <button
+                    type="button"
+                    onClick={() => setAzubi({ inSchoolTerm: false, schoolTermStart: undefined, schoolTermEnd: undefined })}
+                    className="text-sm text-rose-600 underline"
+                  >
+                    Xoá đợt học
+                  </button>
                 </>
               )}
             </SheetSection>

@@ -11,11 +11,17 @@
 @layer base {
   /* Eingabefelder bekommen IMMER einen hellen Grund – Tailwinds Preflight
      macht sie sonst transparent, und im Dunkelmodus erschienen sie schwarz. */
-  input,
+  input:not([type="checkbox"]):not([type="radio"]),
   select,
   textarea {
     background-color: #fff;
     color: #1e293b;
+  }
+  /* Häkchen klar als anklickbar zeigen (vorher wirkten sie wie gesperrt). */
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: #0f766e;
+    cursor: pointer;
   }
 }
 
