@@ -85,3 +85,22 @@ describe("Mai Sen schedule (December 2026)", () => {
     }
   });
 });
+
+describe("Mai Sen soft rules (few staff: keep them light)", () => {
+  const hoursOn = (date: string) => shifts.filter((s) => s.date === date).reduce((a, s) => a + s.paidMinutes, 0);
+  const openDates = [...new Set(shifts.map((s) => s.date))].filter((d) => !holidays.has(d));
+  const dow = (d: string) => new Date(`${d}T12:00:00`).getDay();
+  const avg = (ds: string[]) => ds.reduce((a, d) => a + hoursOn(d), 0) / ds.length;
+
+  it("puts more hours on the busy days Thu/Fri/Sat than on Tue/Wed/Sun", () => {
+    const busy = openDates.filter((d) => [4, 5, 6].includes(dow(d)));
+    const normal = openDates.filter((d) => [2, 3, 0].includes(dow(d)));
+    expect(avg(busy)).toBeGreaterThan(avg(normal));
+  });
+
+  it("has no Thienlong month-change rush: the 1st–3rd are not heavier than other Tuesdays/Wednesdays", async () => {
+    const { isThienlongMonthRushDate, thienlongStaffingProfile } = await import("../thienlongDemand");
+    expect(isThienlongMonthRushDate("2026-12-01", "maisen")).toBe(false);
+    expect(thienlongStaffingProfile("saturday", false, "maisen").minStaff).toBe(0);
+  });
+});

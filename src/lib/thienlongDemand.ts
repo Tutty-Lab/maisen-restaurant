@@ -190,7 +190,9 @@ export function thienlongMealPeakIntervals(
  * 1.–3. sind etwas voller als ein normaler Wochentag. Nur WEICH – etwas mehr
  * Gewicht, kein Samstag-Niveau und keine Mindestbesetzung.
  */
-export function isThienlongMonthRushDate(isoDate: string): boolean {
+export function isThienlongMonthRushDate(isoDate: string, storeId?: string): boolean {
+  // Mai Sen: keine Monatswechsel-Spitze (Thienlong-Eigenheit).
+  if (storeId === "maisen") return false;
   const year = Number(isoDate.slice(0, 4));
   const month = Number(isoDate.slice(5, 7));
   const day = Number(isoDate.slice(8, 10));
@@ -251,8 +253,25 @@ export function thienlongDemandIntervals(
   }));
 }
 
+/**
+ * Mai Sen (Chef, Nov 2026): „tiệm đông thứ 5-6-7" – Do/Fr/Sa sind voll,
+ * Di/Mi/So normal (Mo Ruhetag). Feiertage wie Sonntag.
+ */
+export const MAISEN_BUSY_DAYS: readonly WeekdayKey[] = ["thursday", "friday", "saturday"];
+export const MAISEN_BUSY_WEIGHT = 1.3;
+
+export function maisenDemandWeight(weekday: WeekdayKey, isHoliday = false): number {
+  if (isHoliday) return 1;
+  return MAISEN_BUSY_DAYS.includes(weekday) ? MAISEN_BUSY_WEIGHT : 1;
+}
+
 /** Mo-Do are the base; Friday/Saturday are busiest, Sunday is moderately busier. */
-export function thienlongDemandWeight(weekday: WeekdayKey, isHoliday = false): number {
+export function thienlongDemandWeight(
+  weekday: WeekdayKey,
+  isHoliday = false,
+  storeId?: string,
+): number {
+  if (storeId === "maisen") return maisenDemandWeight(weekday, isHoliday);
   if (isHoliday) return 1.35;
   if (weekday === "friday" || weekday === "saturday") return 1.35;
   // Chủ nhật ~55 h statt ~59 h (Wunsch Chef, Sept 2026).
@@ -264,11 +283,13 @@ export function thienlongDemandWeight(weekday: WeekdayKey, isHoliday = false): n
 export const THIENLONG_MONTH_RUSH_WEIGHT = 1.15;
 
 /** Tagesgewicht für ein konkretes Datum (Wochentag, Feiertag, Monatswechsel). */
-export function thienlongDateWeight(isoDate: string, isHoliday = false): number {
+export function thienlongDateWeight(isoDate: string, isHoliday = false, storeId?: string): number {
   const [y, m, d] = isoDate.split("-").map(Number);
   const weekday = WEEKDAY_KEYS_BY_JS_DAY[new Date(y, m - 1, d).getDay()];
-  const base = thienlongDemandWeight(weekday, isHoliday);
-  return isThienlongMonthRushDate(isoDate) ? Math.max(base, THIENLONG_MONTH_RUSH_WEIGHT) : base;
+  const base = thienlongDemandWeight(weekday, isHoliday, storeId);
+  return isThienlongMonthRushDate(isoDate, storeId)
+    ? Math.max(base, THIENLONG_MONTH_RUSH_WEIGHT)
+    : base;
 }
 
 const WEEKDAY_KEYS_BY_JS_DAY: readonly WeekdayKey[] = [
@@ -284,8 +305,12 @@ const WEEKDAY_KEYS_BY_JS_DAY: readonly WeekdayKey[] = [
 export function thienlongStaffingProfile(
   weekday: WeekdayKey,
   isHoliday = false,
+  storeId?: string,
 ): ThienlongStaffingProfile {
   const band = { minHours: 0, maxHours: Number.POSITIVE_INFINITY };
+  // Mai Sen hat wenig Leute: keine Kopfzahl-Vorgaben je Tag, nur eine
+  // großzügige Obergrenze (Luật mềm bewusst schwach, Wunsch Chef Nov 2026).
+  if (storeId === "maisen") return { minStaff: 0, maxStaff: 12, ...band };
   if (isHoliday || weekday === "friday" || weekday === "saturday") {
     return { minStaff: 7, maxStaff: 8, ...band };
   }
@@ -298,7 +323,16 @@ export function thienlongStaffingProfile(
   return { minStaff: 6, maxStaff: 7, ...band };
 }
 
-export function thienlongLateShiftRatio(weekday: WeekdayKey, isHoliday = false): number {
+export function thienlongLateShiftRatio(
+  weekday: WeekdayKey,
+  isHoliday = false,
+  storeId?: string,
+): number {
+  if (storeId === "maisen") {
+    // Abends ist Mai Sen länger offen (5,5–6,5 h statt 4,5 h mittags) und
+    // Do/Fr/Sa am vollsten – nur leicht abendlastig.
+    return MAISEN_BUSY_DAYS.includes(weekday) ? 0.62 : 0.56;
+  }
   if (isHoliday || weekday === "friday" || weekday === "saturday") return 0.78;
   if (weekday === "sunday") return 0.6;
   return 23 / 41.5;

@@ -82,7 +82,7 @@ export function ScheduleDayView({
   const weekdayKey = weekdayKeyOf(parseIsoDate(selectedDate));
   const isWeekend = weekdayKey === "saturday" || weekdayKey === "sunday";
   const isThienlong = usesRolePlanning(store.storeId);
-  const isRush = isThienlong && isThienlongMonthRushDate(selectedDate);
+  const isRush = isThienlong && isThienlongMonthRushDate(selectedDate, store.storeId);
 
   function chipClass(iso: string): string {
     const o = overridesByDate.get(iso);

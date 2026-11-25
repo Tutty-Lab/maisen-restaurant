@@ -927,7 +927,7 @@ function placeRigidShifts(state: SchedulerState): void {
   );
   const weightOf = (employee: Employee, d: string) =>
     (employee.workRole && state.paceWeight.get(employee.workRole)?.get(d)) ||
-    thienlongDateWeight(d, state.holidays.has(d));
+    thienlongDateWeight(d, state.holidays.has(d), state.storeId);
 
   const plans = new Map(
     rigid.map((e) => [
@@ -1078,7 +1078,7 @@ function placeOneShift(state: SchedulerState, employee: Employee): boolean {
     if (weekCap !== null && (weekUsed.get(weekKey) ?? 0) >= weekCap) continue;
     eligibleByWeek.set(weekKey, (eligibleByWeek.get(weekKey) ?? 0) + 1);
     if (state.isThienlong) {
-      eligibleWeightSum += thienlongDateWeight(isoDate, state.holidays.has(isoDate));
+      eligibleWeightSum += thienlongDateWeight(isoDate, state.holidays.has(isoDate), state.storeId);
       eligibleCount += 1;
     }
   }
@@ -1122,6 +1122,7 @@ function placeOneShift(state: SchedulerState, employee: Employee): boolean {
       ? thienlongStaffingProfile(
           weekdayKeyOf(parseIsoDate(isoDate)),
           state.holidays.has(isoDate),
+          state.storeId,
         )
       : null;
     if (staffingProfile) {
@@ -1149,7 +1150,7 @@ function placeOneShift(state: SchedulerState, employee: Employee): boolean {
     // Längste Schicht, die ins Fenster passt UND den Rest exakt aufteilbar lässt.
     const profile = state.isThienlong ? "thienlong" : "default";
     const pacedWeight = planned !== null
-      ? thienlongDateWeight(isoDate, state.holidays.has(isoDate))
+      ? thienlongDateWeight(isoDate, state.holidays.has(isoDate), state.storeId)
       : 1;
     const hours = planned !== null
       ? choosePacedHours(
@@ -1190,7 +1191,7 @@ function placeOneShift(state: SchedulerState, employee: Employee): boolean {
       ? (roleTargetMin - rolePaidOn(state, employee.workRole!, isoDate)) / 60
       : (state.rawTarget.get(isoDate)! - ds.totalPaid) / 60;
     const dayWeight = state.isThienlong
-      ? thienlongDateWeight(isoDate, state.holidays.has(isoDate))
+      ? thienlongDateWeight(isoDate, state.holidays.has(isoDate), state.storeId)
       : DAY_WEIGHTS[state.effKeyOf(isoDate)];
     const uncoveredRoleHours = roleGapHours(state, employee, isoDate);
     const staffingGap = staffingProfile && state.useThienlongStaffingCounts
@@ -1336,6 +1337,7 @@ function thienlongDateCost(
   const profile = thienlongStaffingProfile(
     weekdayKeyOf(parseIsoDate(isoDate)),
     state.holidays.has(isoDate),
+    state.storeId,
   );
   const hours = (ds.totalPaid + paidDelta) / 60;
   const rawHours = (state.rawTarget.get(isoDate) ?? 0) / 60;
@@ -1374,6 +1376,7 @@ function repairThienlongStaffing(state: SchedulerState): void {
       const profile = thienlongStaffingProfile(
         weekdayKeyOf(parseIsoDate(date)),
         state.holidays.has(date),
+        state.storeId,
       );
       return state.dateState.get(date)!.count < profile.minStaff;
     });
@@ -1397,12 +1400,14 @@ function repairThienlongStaffing(state: SchedulerState): void {
         const targetProfile = thienlongStaffingProfile(
           weekdayKeyOf(parseIsoDate(to)),
           state.holidays.has(to),
+          state.storeId,
         );
         if (state.dateState.get(to)!.count >= targetProfile.maxStaff + state.extraStaff) continue;
         if (state.useThienlongStaffingCounts) {
           const sourceProfile = thienlongStaffingProfile(
             weekdayKeyOf(parseIsoDate(from)),
             state.holidays.has(from),
+            state.storeId,
           );
           if (state.dateState.get(from)!.count <= sourceProfile.minStaff) continue;
         }
@@ -1486,6 +1491,7 @@ function repairDemand(state: SchedulerState, employeesById: Map<string, Employee
           const profile = thienlongStaffingProfile(
             weekdayKeyOf(parseIsoDate(to)),
             state.holidays.has(to),
+            state.storeId,
           );
           // Kopf-Obergrenze ist weich: für „Rải đều" darf ein Einsatz sie um 1 überschreiten.
           const cap = profile.maxStaff + state.extraStaff + (spreadDelta(state, employee, from, to) < -0.5 ? 1 : 0);
@@ -2741,7 +2747,7 @@ function repairRoleDayPresence(state: SchedulerState): void {
           if (worked.has(date)) continue;
           if (!matchesEmployeeDayRules(state, emp, date)) continue;
           if (maxPaidForDay(day) < shift.paidMinutes) continue;
-          const prof = thienlongStaffingProfile(weekdayKeyOf(parseIsoDate(date)), state.holidays.has(date));
+          const prof = thienlongStaffingProfile(weekdayKeyOf(parseIsoDate(date)), state.holidays.has(date), state.storeId);
           if (state.dateState.get(date)!.count >= prof.maxStaff + state.extraStaff) continue;
           const trial = new Set(worked);
           trial.delete(donor);
@@ -3049,7 +3055,7 @@ export function generateSchedule(input: GenerateInput): Shift[] {
   const weightOf = (isoDate: string): number => {
     if (dayOf(isoDate).closed) return 0;
     return isThienlong
-      ? thienlongDateWeight(isoDate, holidays.has(isoDate))
+      ? thienlongDateWeight(isoDate, holidays.has(isoDate), input.storeId)
       : DAY_WEIGHTS[effKeyOf(isoDate)];
   };
   const lateRatioOf = (isoDate: string): number =>
@@ -3057,6 +3063,7 @@ export function generateSchedule(input: GenerateInput): Shift[] {
       ? thienlongLateShiftRatio(
           weekdayKeyOf(parseIsoDate(isoDate)),
           holidays.has(isoDate),
+          input.storeId,
         )
       : LATE_SHIFT_RATIOS[effKeyOf(isoDate)];
 
@@ -3078,6 +3085,7 @@ export function generateSchedule(input: GenerateInput): Shift[] {
         return thienlongStaffingProfile(
           weekdayKeyOf(parseIsoDate(date)),
           holidays.has(date),
+          input.storeId,
         ).minHours > 0;
       })
     : [];
@@ -3091,6 +3099,7 @@ export function generateSchedule(input: GenerateInput): Shift[] {
     const profile = thienlongStaffingProfile(
       weekdayKeyOf(parseIsoDate(date)),
       holidays.has(date),
+      input.storeId,
     );
     return total + profile.minStaff;
   }, 0);
@@ -3196,7 +3205,7 @@ export function generateSchedule(input: GenerateInput): Shift[] {
       }, 0);
       const capacity = openThienlongDates.reduce(
         (sum, date) =>
-          sum + thienlongStaffingProfile(weekdayKeyOf(parseIsoDate(date)), holidays.has(date)).maxStaff,
+          sum + thienlongStaffingProfile(weekdayKeyOf(parseIsoDate(date)), holidays.has(date), input.storeId).maxStaff,
         0,
       );
       st.extraStaff = Math.max(0, Math.ceil((visits - capacity) / openThienlongDates.length));

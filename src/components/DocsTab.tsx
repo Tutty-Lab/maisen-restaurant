@@ -18,13 +18,15 @@ const WEEKDAY_ORDER: WeekdayKey[] = [
   "sunday",
 ];
 
-const THIENLONG_DAY_WEIGHTS = Object.fromEntries(
-  WEEKDAY_ORDER.map((weekday) => [weekday, thienlongDemandWeight(weekday)]),
-) as Record<WeekdayKey, number>;
+const dayWeightsFor = (storeId: string) =>
+  Object.fromEntries(
+    WEEKDAY_ORDER.map((weekday) => [weekday, thienlongDemandWeight(weekday, false, storeId)]),
+  ) as Record<WeekdayKey, number>;
 
-const THIENLONG_LATE_SHIFT_RATIOS = Object.fromEntries(
-  WEEKDAY_ORDER.map((weekday) => [weekday, thienlongLateShiftRatio(weekday)]),
-) as Record<WeekdayKey, number>;
+const lateShiftRatiosFor = (storeId: string) =>
+  Object.fromEntries(
+    WEEKDAY_ORDER.map((weekday) => [weekday, thienlongLateShiftRatio(weekday, false, storeId)]),
+  ) as Record<WeekdayKey, number>;
 
 function roleRatio(kitchenShare: number, serviceShare: number): string {
   const total = kitchenShare + serviceShare;
@@ -109,8 +111,8 @@ function WeekdayTable({
 
 export function DocsTab({ storeId }: { storeId: string }) {
   const isThienlong = usesRolePlanning(storeId);
-  const dayWeights = THIENLONG_DAY_WEIGHTS;
-  const lateShiftRatios = THIENLONG_LATE_SHIFT_RATIOS;
+  const dayWeights = dayWeightsFor(storeId);
+  const lateShiftRatios = lateShiftRatiosFor(storeId);
   const weekdayKitchen = thienlongRoleShare("monday", "KITCHEN");
   const weekdayService = thienlongRoleShare("monday", "SERVICE");
   const weekdayLunchKitchen = demandShareBetween("monday", "KITCHEN", 10 * 60 + 30, 15 * 60);

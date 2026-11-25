@@ -18,8 +18,8 @@ export type StoreConfig = {
 export const STORES: StoreConfig[] = [
   {
     id: "maisen",
-    name: "MAISEN Restaurant",
-    address: "Beethovenallee 9, 53173 Bonn",
+    name: "Mai Sen (DVB Gastro GmbH)",
+    address: "Beethovenallee 9, 53173 Bonn-Bad Godesberg",
     holidayState: "NW", // Bonn liegt in Nordrhein-Westfalen
   },
 ];
