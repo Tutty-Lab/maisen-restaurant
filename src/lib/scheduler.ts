@@ -72,6 +72,7 @@ import {
   thienlongMealPeakIntervals,
   thienlongStaffingProfile,
 } from "./thienlongDemand";
+import { usesRolePlanning } from "./stores";
 
 export type GenerateInput = {
   year: number;
@@ -120,6 +121,8 @@ type SchedulerState = {
   holidays: Set<string>;
   employeesById: Map<string, Employee>;
   isThienlong: boolean;
+  /** Filiale (für filialspezifische Regeln wie die Mindestbesetzung). */
+  storeId?: string;
   /** Current workforce has enough monthly hours for the 6-7 / 7-8 staffing bands. */
   useThienlongStaffingBands: boolean;
   /** Current workforce has enough visits to keep the requested headcount floor. */
@@ -2566,7 +2569,7 @@ function optimizeThienlongPlacement(
     // jeweils 1 Bồi).
     const minHeads = new Map<WorkRole, number[]>();
     for (const role of roles) {
-      const windows = thienlongMinStaffWindows(weekday, role);
+      const windows = thienlongMinStaffWindows(weekday, role, state.storeId);
       minHeads.set(role, slots.map((t) =>
         windows.reduce(
           (max, w) => (t >= w.startMinutes && t + SLOT <= w.endMinutes ? Math.max(max, w.minStaff) : max),
@@ -3038,7 +3041,7 @@ export function generateSchedule(input: GenerateInput): Shift[] {
   const { year, month, workHours, employees } = input;
   const holidays = input.holidays ?? holidaysOf(year, input.holidayState ?? "BW");
   const overrides = input.overrides ?? {};
-  const isThienlong = input.storeId === "thienlong";
+  const isThienlong = usesRolePlanning(input.storeId);
 
   const effKeyOf = (isoDate: string): WeekdayKey => effectiveWeekdayKey(isoDate, holidays);
   const dayOf = (isoDate: string): ResolvedDay => resolveDay(workHours, isoDate, holidays, overrides);
@@ -3150,6 +3153,7 @@ export function generateSchedule(input: GenerateInput): Shift[] {
       holidays,
       employeesById,
       isThienlong,
+      storeId: input.storeId,
       useThienlongStaffingBands,
       useThienlongStaffingCounts,
       dayOf,

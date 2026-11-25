@@ -7,6 +7,7 @@ import {
   findRoleSwitchOptions,
   type RoleSwitchResult,
 } from "../lib/suggestions";
+import { usesRolePlanning } from "../lib/stores";
 
 const GROUPS: { kind: ValidationErrorKind; title: string }[] = [
   { kind: "coverage", title: "Thiếu người theo giờ" },
@@ -197,7 +198,7 @@ export function ValidationPanel({ store }: { store: UseScheduleReturn }) {
   const errors = all.filter((e) => e.severity !== "warning");
   const warnings = all.filter((e) => e.severity === "warning");
   if (!genError && all.length === 0) return null;
-  const isThienlong = store.storeId === "thienlong";
+  const isThienlong = usesRolePlanning(store.storeId);
   const hasRoleProblems = !!genError || errors.some((e) => e.kind === "coverage");
 
   return (

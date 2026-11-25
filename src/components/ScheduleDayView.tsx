@@ -17,6 +17,7 @@ import { isThienlongMonthRushDate } from "../lib/thienlongDemand";
 import { isEmployeeFixedDayOff } from "../lib/fixedDaysOff";
 import { isEmployeeAvailableOn } from "../lib/availability";
 import { ShiftTimes } from "./ShiftTimes";
+import { usesRolePlanning } from "../lib/stores";
 
 /** Chế độ xem theo từng ngày – tối ưu cho điện thoại (không cuộn ngang). */
 export function ScheduleDayView({
@@ -80,7 +81,7 @@ export function ScheduleDayView({
   const holiday = holidayNames.get(selectedDate);
   const weekdayKey = weekdayKeyOf(parseIsoDate(selectedDate));
   const isWeekend = weekdayKey === "saturday" || weekdayKey === "sunday";
-  const isThienlong = store.storeId === "thienlong";
+  const isThienlong = usesRolePlanning(store.storeId);
   const isRush = isThienlong && isThienlongMonthRushDate(selectedDate);
 
   function chipClass(iso: string): string {

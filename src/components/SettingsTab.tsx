@@ -18,7 +18,7 @@ import {
 } from "../lib/workHours";
 import { holidayNames as holidayNamesOf, HOLIDAY_STATE_LABELS } from "../lib/holidays";
 import { isoLabel } from "../lib/shiftOps";
-import { STORES } from "../lib/stores";
+import { STORES, usesRolePlanning } from "../lib/stores";
 import { normalizeSurchargeConfig } from "../lib/zuschlaege";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -101,6 +101,33 @@ function DayRow({
   onChange: (next: DayBlocks) => void;
 }) {
   const split = blocks.length > 1;
+  const closed = blocks.length === 0;
+
+  if (closed) {
+    return (
+      <div className="py-1.5 border-b border-slate-100 last:border-0">
+        <div className="flex items-center gap-2">
+          <div className="w-24 sm:w-40 shrink-0">
+            <div className="text-sm text-slate-700 leading-tight">{label}</div>
+            {hint && <div className="text-[11px] text-slate-400">{hint}</div>}
+          </div>
+          <span className="text-sm font-medium text-rose-600">Đóng cửa cả ngày</span>
+          <button
+            type="button"
+            onClick={() =>
+              onChange([
+                { startMinutes: 10 * 60 + 30, endMinutes: 15 * 60 },
+                { startMinutes: 16 * 60 + 30, endMinutes: 22 * 60 },
+              ])
+            }
+            className="ml-auto shrink-0 text-xs text-slate-500 hover:text-slate-900 underline"
+          >
+            Mở cửa
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   function setBlock(i: number, next: DayWindow) {
     onChange(blocks.map((b, k) => (k === i ? next : b)));
@@ -136,6 +163,13 @@ function DayRow({
           className="ml-auto shrink-0 text-xs text-slate-500 hover:text-slate-900 underline"
         >
           {split ? "Bỏ nghỉ trưa" : "Thêm nghỉ trưa"}
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          className="shrink-0 text-xs text-rose-500 hover:text-rose-700 underline"
+        >
+          Đóng cửa
         </button>
       </div>
 
@@ -286,7 +320,7 @@ export function SettingsTab({ store }: { store: UseScheduleReturn }) {
         </div>
       </section>
 
-      {store.storeId === "thienlong" && (
+      {usesRolePlanning(store.storeId) && (
         <details className="group rounded-lg bg-white border border-slate-200 shadow-sm">
           <summary className="flex cursor-pointer list-none items-center px-4 py-3 sm:px-5">
             <h2 className="text-base font-semibold text-slate-900">Hệ số Zuschläge</h2>
@@ -381,7 +415,7 @@ export function SettingsTab({ store }: { store: UseScheduleReturn }) {
           }}
           className="mt-3 text-xs text-slate-500 hover:text-slate-900 underline"
         >
-          Đặt lại giờ mặc định Thienlong (nhân viên đến trước giờ mở cửa 30 phút)
+          Đặt lại giờ mặc định Mai Sen (nhân viên đến trước giờ mở cửa 30 phút)
         </button>
 
         {holidaysThisMonth.length > 0 && (

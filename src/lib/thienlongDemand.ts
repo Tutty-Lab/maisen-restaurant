@@ -208,7 +208,12 @@ export type MinStaffWindow = { startMinutes: number; endMinutes: number; minStaf
 export function thienlongMinStaffWindows(
   weekday: WeekdayKey,
   role: WorkRole,
+  storeId?: string,
 ): readonly MinStaffWindow[] {
+  // Mai Sen: nur „luôn ít nhất 1 Bếp + 1 Bồi" (Lücken-Regel). Die Thienlong-
+  // Wochenend-Mindestbesetzung (3 Bếp 14–17 Uhr) passt nicht: Mai Sen ist
+  // 15:00–16:30 zu und hat nur drei Leute in der Küche.
+  if (storeId === "maisen") return [];
   if (weekday !== "friday" && weekday !== "saturday" && weekday !== "sunday") return [];
   const kitchen = role === "KITCHEN";
   return [

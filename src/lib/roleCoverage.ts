@@ -68,6 +68,7 @@ export function dayRoleIssues(
   blocks: readonly Block[],
   weekday: WeekdayKey,
   rolesInTeam: readonly WorkRole[] = ROLES,
+  storeId?: string,
 ): DayRoleIssues {
   const issues: DayRoleIssues = { gaps: [], minStaff: [], eveningBelowLunch: [] };
   for (const role of rolesInTeam) {
@@ -80,7 +81,7 @@ export function dayRoleIssues(
     }
     if (gapSlots.length > 0) issues.gaps.push({ role, slots: gapSlots });
 
-    for (const w of thienlongMinStaffWindows(weekday, role)) {
+    for (const w of thienlongMinStaffWindows(weekday, role, storeId)) {
       const short: number[] = [];
       for (let t = w.startMinutes; t + 30 <= w.endMinutes; t += 30) {
         if (!blocks.some((b) => b.startMinutes <= t && b.endMinutes >= t + 30)) continue;

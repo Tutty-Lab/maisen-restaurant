@@ -6,6 +6,7 @@ import {
   thienlongLateShiftRatio,
   thienlongRoleShare,
 } from "../lib/thienlongDemand";
+import { usesRolePlanning } from "../lib/stores";
 
 const WEEKDAY_ORDER: WeekdayKey[] = [
   "monday",
@@ -107,7 +108,7 @@ function WeekdayTable({
 }
 
 export function DocsTab({ storeId }: { storeId: string }) {
-  const isThienlong = storeId === "thienlong";
+  const isThienlong = usesRolePlanning(storeId);
   const dayWeights = THIENLONG_DAY_WEIGHTS;
   const lateShiftRatios = THIENLONG_LATE_SHIFT_RATIOS;
   const weekdayKitchen = thienlongRoleShare("monday", "KITCHEN");

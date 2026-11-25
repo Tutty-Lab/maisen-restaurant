@@ -17,7 +17,7 @@ import {
   type DateOverride,
   type OverrideMap,
 } from "../lib/workHours";
-import { loadStoreId, saveStoreId, storeById, type StoreConfig } from "../lib/stores";
+import { loadStoreId, saveStoreId, storeById, usesRolePlanning, type StoreConfig } from "../lib/stores";
 import {
   defaultAzubiConfig,
   withAutomaticAzubiTarget,
@@ -251,8 +251,8 @@ export function useSchedule() {
   const readiness = useMemo(
     () =>
       checkScheduleReadiness(schedule.employees, {
-        requireWorkRole: storeId === "thienlong",
-        requireFixedDaysOff: storeId === "thienlong",
+        requireWorkRole: usesRolePlanning(storeId),
+        requireFixedDaysOff: usesRolePlanning(storeId),
         storeId,
         year: schedule.year,
         month: schedule.month,
@@ -265,7 +265,7 @@ export function useSchedule() {
    * erreichbar ist (z.B. Sept 2026: max. 168 h statt 174 h).
    */
   const azubiCapacityIssues = useMemo(() => {
-    if (storeId !== "thienlong") return [];
+    if (!usesRolePlanning(storeId)) return [];
     return schedule.employees
       .filter((e) => e.employmentType === "AZUBI" && e.targetMinutes > 0)
       .map((e) => ({

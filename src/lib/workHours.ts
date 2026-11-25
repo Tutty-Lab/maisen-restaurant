@@ -41,11 +41,18 @@ export type ResolvedDay = { closed: boolean; blocks: DayBlocks };
 
 const w = (start: number, end: number): DayWindow => ({ startMinutes: start, endMinutes: end });
 
-// Staff windows start 30 minutes before the published opening time so the
-// opening team can prepare the restaurant before guests arrive.
+// Mai Sen (Beethovenallee 9, Bonn) laut Aushang/Speisekarte: Mo Ruhetag,
+// Di–So 11:00–15:00 und 17:00–22:00, Fr/Sa abends bis 23:00. Die Personal-
+// fenster beginnen 30 Minuten vor Öffnung (Vorbereitung), wie bei Thienlong.
+// Eine LEERE Blockliste bedeutet: an diesem Wochentag geschlossen.
+const CLOSED: DayBlocks = [];
 const SPLIT_DAY: DayBlocks = [w(10 * 60 + 30, 15 * 60), w(16 * 60 + 30, 22 * 60)];
-const FRIDAY: DayBlocks = [w(10 * 60 + 30, 22 * 60)];
-const WEEKEND: DayBlocks = [w(11 * 60 + 30, 22 * 60)];
+const SPLIT_LATE: DayBlocks = [w(10 * 60 + 30, 15 * 60), w(16 * 60 + 30, 23 * 60)];
+
+// Thienlong-Vorgabe (Herkunft dieses Repos). Bleibt als DEFAULT_WORK_HOURS,
+// weil die mitgebrachten Tests und Beispieldaten genau diese Zeiten erwarten.
+const TL_FRIDAY: DayBlocks = [w(10 * 60 + 30, 22 * 60)];
+const TL_WEEKEND: DayBlocks = [w(11 * 60 + 30, 22 * 60)];
 
 
 const clone = (blocks: DayBlocks): DayBlocks => blocks.map((b) => ({ ...b }));
@@ -70,16 +77,31 @@ export const DEFAULT_WORK_HOURS: WorkHoursConfig = {
     tuesday: clone(SPLIT_DAY),
     wednesday: clone(SPLIT_DAY),
     thursday: clone(SPLIT_DAY),
-    friday: clone(FRIDAY),
-    saturday: clone(WEEKEND),
-    sunday: clone(WEEKEND),
+    friday: clone(TL_FRIDAY),
+    saturday: clone(TL_WEEKEND),
+    sunday: clone(TL_WEEKEND),
   },
-  holiday: clone(WEEKEND),
+  holiday: clone(TL_WEEKEND),
+};
+
+/** Mai Sen: Mo Ruhetag, Di–So mittags geschlossen, Fr/Sa bis 23:00. */
+export const MAISEN_WORK_HOURS: WorkHoursConfig = {
+  perWeekday: {
+    monday: clone(CLOSED),
+    tuesday: clone(SPLIT_DAY),
+    wednesday: clone(SPLIT_DAY),
+    thursday: clone(SPLIT_DAY),
+    friday: clone(SPLIT_LATE),
+    saturday: clone(SPLIT_LATE),
+    sunday: clone(SPLIT_DAY),
+  },
+  // Feiertage wie Sonntag geöffnet – auch an Feiertags-Montagen (Ostermontag,
+  // Pfingstmontag). Abweichungen über „Ngày đặc biệt" eintragen.
+  holiday: clone(SPLIT_DAY),
 };
 
 export function defaultWorkHoursForStore(storeId: string): WorkHoursConfig {
-  void storeId;
-  const source = DEFAULT_WORK_HOURS;
+  const source = storeId === "maisen" ? MAISEN_WORK_HOURS : DEFAULT_WORK_HOURS;
   return {
     perWeekday: Object.fromEntries(
       Object.entries(source.perWeekday).map(([key, blocks]) => [key, clone(blocks)]),
@@ -127,7 +149,10 @@ export function resolveDay(
   if (ov?.closed) return { closed: true, blocks: [] };
   // Eine Ausnahme mit eigenen Zeiten ist immer ein einzelner Block.
   if (ov?.window) return { closed: false, blocks: [ov.window] };
-  return { closed: false, blocks: resolveWorkWindow(config, isoDate, holidays) };
+  const blocks = resolveWorkWindow(config, isoDate, holidays);
+  // Leere Blockliste = Ruhetag (z.B. Mai Sen montags).
+  if (blocks.length === 0) return { closed: true, blocks: [] };
+  return { closed: false, blocks };
 }
 
 /**
@@ -143,6 +168,8 @@ function toBlocks(value: unknown, fallback: DayBlocks): DayBlocks {
     typeof (b as DayWindow).endMinutes === "number";
 
   if (Array.isArray(value)) {
+    // Bewusst leer gespeichert = Ruhetag, NICHT auf die Vorgabe zurückfallen.
+    if (value.length === 0) return [];
     const blocks = value.filter(isBlock).map((b) => ({ ...b }));
     return blocks.length > 0 ? blocks : clone(fallback);
   }

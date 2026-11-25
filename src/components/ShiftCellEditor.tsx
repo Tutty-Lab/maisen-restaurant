@@ -36,7 +36,10 @@ export function ShiftCellEditor({
   // (inkl. Ausnahmen / Feiertag).
   const overrideMap = Object.fromEntries(schedule.dateOverrides.map((o) => [o.date, o]));
   const resolved = resolveDay(schedule.workHours, date, holidaysOf(schedule.year, schedule.holidayState), overrideMap);
-  const win = resolved.closed ? schedule.workHours.holiday[0] : resolved.blocks[0];
+  const win = (resolved.closed ? schedule.workHours.holiday[0] : resolved.blocks[0]) ?? {
+    startMinutes: 10 * 60 + 30,
+    endMinutes: 22 * 60,
+  };
   // Ca gãy: zwei Stücke (Ca 1 / Ca 2), jeweils Giờ vào / Giờ ra.
   const initialPieces = shift
     ? (shift.segments && shift.segments.length > 1

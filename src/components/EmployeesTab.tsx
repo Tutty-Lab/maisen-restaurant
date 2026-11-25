@@ -34,6 +34,7 @@ import {
   requiredFixedDaysOff,
   WEEKDAY_ORDER,
 } from "../lib/fixedDaysOff";
+import { usesRolePlanning } from "../lib/stores";
 
 // text-base (16px) auf dem Handy: iOS zoomt sonst beim Tippen hinein.
 const inputClass =
@@ -556,7 +557,7 @@ function EmployeeSheet({
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((prev) => ({ ...prev, [k]: v }));
   const setAzubi = (patch: Partial<AzubiConfig>) => setD((prev) => ({ ...prev, azubi: { ...prev.azubi, ...patch } }));
 
-  const showWorkRole = storeId === "thienlong";
+  const showWorkRole = usesRolePlanning(storeId);
   const isAzubi = d.employmentType === "AZUBI";
   const stunden = Math.max(0, Math.round(Number(d.hours) || 0));
   const info = splitInfo(stunden, d.employmentType);

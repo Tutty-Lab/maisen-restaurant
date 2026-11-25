@@ -1,6 +1,6 @@
 // ============================================================================
-// Gesetzliche Feiertage in Brandenburg – der Shop liegt in Herzfelde (15378),
-// also Brandenburg. Bewegliche Feiertage werden über die Osterformel
+// Gesetzliche Feiertage je Bundesland. Mai Sen liegt in Bonn, also
+// Nordrhein-Westfalen (NW); BB/BW bleiben für die mitgebrachten Tests. Bewegliche Feiertage werden über die Osterformel
 // (Gauß/Computus) berechnet.
 //
 // Besonderheit Brandenburg (BbgFTG §1): Ostersonntag und Pfingstsonntag sind
@@ -35,11 +35,12 @@ function iso(date: Date): string {
 }
 
 /** Bundesländer, für die dieses Projekt Feiertage kennt. */
-export type HolidayState = "BB" | "BW";
+export type HolidayState = "BB" | "BW" | "NW";
 
 export const HOLIDAY_STATE_LABELS: Record<HolidayState, string> = {
   BB: "Brandenburg",
   BW: "Baden-Württemberg",
+  NW: "Nordrhein-Westfalen",
 };
 
 /** Datum -> Name aller gesetzlichen Feiertage eines Bundeslandes. */
@@ -64,6 +65,11 @@ export function holidayNames(year: number, state: HolidayState): Map<string, str
     map.set(iso(easter), "Ostersonntag");
     map.set(iso(addDays(easter, 49)), "Pfingstsonntag");
     map.set(iso(new Date(year, 9, 31)), "Reformationstag");
+  } else if (state === "NW") {
+    // Nordrhein-Westfalen (FTG NW §2): Fronleichnam und Allerheiligen,
+    // kein Heilige Drei Könige, kein Reformationstag.
+    map.set(iso(addDays(easter, 60)), "Fronleichnam");
+    map.set(iso(new Date(year, 10, 1)), "Allerheiligen");
   } else {
     // Baden-Württemberg: katholisch geprägte Feiertage, kein Reformationstag.
     map.set(iso(new Date(year, 0, 6)), "Heilige Drei Könige");

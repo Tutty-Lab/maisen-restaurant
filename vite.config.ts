@@ -27,8 +27,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["icon.svg"],
       manifest: {
-        name: "Lịch làm việc & Bảng chấm công",
-        short_name: "Lịch làm việc",
+        name: "Mai Sen – Lịch làm việc & Bảng chấm công",
+        short_name: "Mai Sen Lịch",
         description:
           "Tạo lịch làm việc hàng tháng và in bảng chấm công (Stundenzettel) cho cửa hàng ở Đức.",
         lang: "vi",

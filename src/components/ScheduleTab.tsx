@@ -24,6 +24,7 @@ import { azubiMonthCapacityBreakdown } from "../lib/scheduler";
 import { ShiftTimes } from "./ShiftTimes";
 import { isEmployeeFixedDayOff } from "../lib/fixedDaysOff";
 import { unavailableReason } from "../lib/availability";
+import { usesRolePlanning } from "../lib/stores";
 
 function isWeekendKey(iso: string): boolean {
   const k = weekdayKeyOf(parseIsoDate(iso));
@@ -132,7 +133,7 @@ export function ScheduleTab({ store }: { store: UseScheduleReturn }) {
 
   // Thienlong: Bếp/Bồi ít nhất có mặt trong từng khung giờ (lúc vắng nhất của
   // khung), để thấy ngay chỗ chỉ còn 1–2 người. `need` = mức tối thiểu theo luật.
-  const isThienlong = store.storeId === "thienlong";
+  const isThienlong = usesRolePlanning(store.storeId);
   const coverage = useMemo(() => {
     const result = new Map<string, Map<string, Coverage | null>>();
     if (!isThienlong) return result;
@@ -150,7 +151,7 @@ export function ScheduleTab({ store }: { store: UseScheduleReturn }) {
         for (const block of day.closed ? [] : day.blocks) {
           for (let t = Math.max(from, block.startMinutes); t + 30 <= Math.min(w.to, block.endMinutes); t += 30) {
             const count = roleShiftsAt(dayShifts, roleOf, w.role, t);
-            const need = thienlongMinStaffWindows(weekday, w.role).reduce(
+            const need = thienlongMinStaffWindows(weekday, w.role, store.storeId).reduce(
               (max, m) => (t >= m.startMinutes && t + 30 <= m.endMinutes ? Math.max(max, m.minStaff) : max),
               0,
             );

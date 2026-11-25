@@ -17,12 +17,21 @@ export type StoreConfig = {
 
 export const STORES: StoreConfig[] = [
   {
-    id: "thienlong",
-    name: "Thien Long Restaurant",
-    address: "Olgastraße 5, 89518 Heidenheim",
-    holidayState: "BW", // Heidenheim liegt in Baden-Württemberg
+    id: "maisen",
+    name: "MAISEN Restaurant",
+    address: "Beethovenallee 9, 53173 Bonn",
+    holidayState: "NW", // Bonn liegt in Nordrhein-Westfalen
   },
 ];
+
+/**
+ * Filialen mit fester Bếp/Bồi-Planung (Rollen, Mindestbesetzung, Stoßzeiten).
+ * Mai Sen wurde aus dem Thienlong-Repo abgespalten und übernimmt dessen
+ * Regeln; "thienlong" bleibt nur, damit die mitgebrachten Tests weiterlaufen.
+ */
+export function usesRolePlanning(storeId: string | undefined): boolean {
+  return storeId === "maisen" || storeId === "thienlong";
+}
 
 export const DEFAULT_STORE_ID = STORES[0].id;
 

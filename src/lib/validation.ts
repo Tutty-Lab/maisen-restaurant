@@ -18,6 +18,7 @@ import { isEmployeeFixedDayOff } from "./fixedDaysOff";
 import { unavailableReason } from "./availability";
 import { azubiMonthCapacityBreakdown, type AzubiWeekCapacity } from "./scheduler";
 import { ROLES, dayRoleIssues, roleCountAt, roleLabel } from "./roleCoverage";
+import { usesRolePlanning } from "./stores";
 
 export type ValidationErrorKind = "coverage" | "hours" | "shift" | "rule";
 
@@ -285,8 +286,8 @@ export function validateSchedule(
 
       // Thienlong: Bếp/Bồi-Regeln (Lücke, Fr/Sa/So-Mindestbesetzung, Abend ≥ Mittag)
       // – gleiche Rechnung wie im Planer (roleCoverage.ts), inkl. Rollenwechsel.
-      if (context.storeId === "thienlong") {
-        roleErrorsForDay(employees, shifts, date, day.blocks).forEach((e) => errors.push(e));
+      if (usesRolePlanning(context.storeId)) {
+        roleErrorsForDay(employees, shifts, date, day.blocks, context.storeId).forEach((e) => errors.push(e));
       }
 
       const openingStart = day.blocks[0].startMinutes;
@@ -326,13 +327,14 @@ function roleErrorsForDay(
   shifts: Shift[],
   date: string,
   blocks: { startMinutes: number; endMinutes: number }[],
+  storeId?: string,
 ): ValidationError[] {
   const byId = employeesByIdOf(employees);
   const roleOf = (s: Shift) => byId.get(s.employeeId)?.workRole;
   const dayShifts = shifts.filter((s) => s.date === date);
   const weekday = weekdayKeyOf(parseIsoDate(date));
   const rolesInTeam = ROLES.filter((r) => employees.some((e) => e.workRole === r && e.targetMinutes > 0));
-  const issues = dayRoleIssues(dayShifts, roleOf, blocks, weekday, rolesInTeam);
+  const issues = dayRoleIssues(dayShifts, roleOf, blocks, weekday, rolesInTeam, storeId);
 
   // Wer kann an dem Tag in dieser Rolle arbeiten (Rolle dieses Monats)?
   const availableFor = (role: WorkRole) =>
