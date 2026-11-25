@@ -91,6 +91,12 @@ export type Employee = {
   startDate?: string;
   /** Ngày nghỉ việc = letzter Arbeitstag (yyyy-MM-dd, inklusiv). Danach nicht mehr. */
   endDate?: string;
+  /**
+   * Giờ cho tháng vào làm / nghỉ việc (Schlüssel yyyy-MM, Stunden): vom Chef
+   * direkt eingetragen, z. B. Eintritt 15.11. → 80 h. Ist der Wert gesetzt,
+   * wird NICHT nach Kalendertagen gekürzt.
+   */
+  periodMonthHours?: Record<string, number>;
   /** Nur bei employmentType === "AZUBI" gesetzt. */
   azubi?: AzubiConfig;
   /** Bếp (KITCHEN) oder Bồi (SERVICE), wenn die Person fest zugeordnet ist. */

@@ -1,6 +1,7 @@
 import type { Employee } from "../types";
 import { hasRequiredFixedDaysOff } from "./fixedDaysOff";
 import { azubiMonthMode, azubiMonthlyHoursOverride, azubiSchoolTermRange } from "./azubi";
+import { needsPeriodMonthHours } from "./employmentPeriod";
 
 export type ScheduleReadiness = {
   ready: boolean;
@@ -21,6 +22,19 @@ export function checkScheduleReadiness(
   const issues: string[] = [];
 
   if (employees.length < 2) issues.push("Cần ít nhất 2 nhân viên.");
+  // Vào làm / nghỉ việc giữa tháng: Chef trägt die Stunden des Monats selbst
+  // ein (z. B. 80 h ab 15.11.) – die App rechnet nicht anteilig herunter.
+  if (options.year && options.month) {
+    const { year, month } = options;
+    const missing = employees.filter((e) => needsPeriodMonthHours(e, year, month));
+    if (missing.length > 0) {
+      issues.push(
+        `Nhập giờ làm tháng ${month}/${year} cho người vào làm / nghỉ việc giữa tháng: ${missing
+          .map((e) => e.name)
+          .join(", ")}.`,
+      );
+    }
+  }
   if (employees.some((employee) => employee.name.trim().length === 0)) {
     issues.push("Mỗi nhân viên phải có tên.");
   }

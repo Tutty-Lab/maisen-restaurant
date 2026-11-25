@@ -108,3 +108,23 @@ describe("Ngày vào làm / nghỉ việc", () => {
     expect(mine.filter((s) => s.date >= "2026-09-07" && s.date <= "2026-09-13")).toHaveLength(5);
   });
 });
+
+describe("Giờ tháng vào làm / nghỉ việc – chủ tự nhập, không tự chia", () => {
+  const base: Employee = { id: "n", name: "Neu", employmentType: "TEILZEIT", targetMinutes: 160 * 60, startDate: "2026-11-15" };
+
+  it("uses the entered hours for the start month and the full hours afterwards", () => {
+    const e = { ...base, periodMonthHours: { "2026-11": 80 } };
+    const nov = withEmploymentPeriodTarget(e, 2026, 11);
+    expect(nov.targetMinutes).toBe(80 * 60);
+    expect(withEmploymentPeriodTarget(nov, 2026, 12).targetMinutes).toBe(160 * 60);
+  });
+
+  it("blocks planning until the hours of the start month are entered", () => {
+    const other: Employee = { id: "o", name: "Other", employmentType: "TEILZEIT", targetMinutes: 40 * 60 };
+    const missing = checkScheduleReadiness([withEmploymentPeriodTarget(base, 2026, 11), other], { year: 2026, month: 11 });
+    expect(missing.issues.join(" ")).toContain("Neu");
+    const entered = { ...base, periodMonthHours: { "2026-11": 80 } };
+    const ok = checkScheduleReadiness([withEmploymentPeriodTarget(entered, 2026, 11), other], { year: 2026, month: 11 });
+    expect(ok.issues.join(" ")).not.toContain("giữa tháng");
+  });
+});

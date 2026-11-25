@@ -19,7 +19,6 @@ import {
   activeDaysInMonth,
   employmentPeriodLabel,
   fullMonthTargetMinutes,
-  prorateForEmploymentPeriod,
 } from "../lib/employmentPeriod";
 import {
   azubiConfigOf,
@@ -87,6 +86,8 @@ type Draft = {
   fixedDaysOff: WeekdayName[];
   azubi: AzubiConfig;
   startDate: string;
+  /** Giờ của tháng vào làm / nghỉ việc (yyyy-MM → Text aus dem Feld). */
+  periodMonthHours: Record<string, string>;
   endDate: string;
   canSwitchRole: boolean;
   roleByMonth: Record<string, WorkRole>;
@@ -111,6 +112,9 @@ function draftFrom(emp?: Employee): Draft {
     // Neue Azubis starten ohne Kỳ học (sonst wäre der Monat „Schule" = 0 h).
     azubi: emp?.azubi ? azubiConfigOf(emp.azubi) : { ...azubiConfigOf(undefined), inSchoolTerm: false },
     startDate: emp?.startDate ?? "",
+    periodMonthHours: Object.fromEntries(
+      Object.entries(emp?.periodMonthHours ?? {}).map(([k, v]) => [k, String(v)]),
+    ),
     endDate: emp?.endDate ?? "",
     canSwitchRole: emp?.canSwitchRole === true,
     roleByMonth: { ...(emp?.roleByMonth ?? {}) },
@@ -148,6 +152,15 @@ function windowsFromDraft(d: Draft): Employee["preferredWindows"] {
   return out.length > 0 ? out : undefined;
 }
 
+/** Giờ tháng vào làm / nghỉ việc: nur gültige Zahlen behalten. */
+function periodMonthHoursFromDraft(d: Draft): Employee["periodMonthHours"] {
+  if (d.employmentType === "AZUBI") return undefined;
+  const kept = Object.entries(d.periodMonthHours)
+    .filter(([, v]) => v.trim() !== "" && Number.isFinite(Number(v)) && Number(v) >= 0)
+    .map(([k, v]) => [k, Math.round(Number(v))] as const);
+  return kept.length > 0 ? Object.fromEntries(kept) : undefined;
+}
+
 /** Lohnangaben aus dem Formular – nur im Modus „Theo lương" und vollständig. */
 function payFromDraft(d: Draft): PayConfig | undefined {
   if (d.employmentType === "AZUBI" || d.hoursMode !== "pay") return undefined;
@@ -178,6 +191,7 @@ function draftToEmployee(d: Draft): Omit<Employee, "id"> {
     baseTargetMinutes: undefined,
     startDate: d.startDate || undefined,
     endDate: d.endDate || undefined,
+    periodMonthHours: periodMonthHoursFromDraft(d),
     azubi: isAzubi ? d.azubi : undefined,
     workRole: d.workRole || undefined,
     saved: d.saved || undefined,
@@ -636,9 +650,10 @@ function EmployeeSheet({
           ? `Tháng ${month}/${year}: không làm ngày nào → 0h, không xếp lịch.`
           : isAzubi
             ? `Tháng ${month}/${year}: làm ${activeDays}/${monthDays} ngày. Azubi không tự tính giờ – nhập giờ riêng tháng này ở trên.`
-            : `Tháng ${month}/${year}: làm ${activeDays}/${monthDays} ngày → khoảng ${
-                prorateForEmploymentPeriod(stunden * 60, draftEmp, year, month) / 60
-              }h.`;
+            : `Tháng ${month}/${year}: làm ${activeDays}/${monthDays} ngày – nhập số giờ của tháng này ở dưới.`;
+  const periodKey = azubiMonthKey(year, month);
+  const isPartialMonth = !isAzubi && activeDays > 0 && activeDays < monthDays;
+  const periodHoursText = d.periodMonthHours[periodKey] ?? "";
 
   const toggleDayOff = (weekday: WeekdayName) => {
     const selected = d.fixedDaysOff.includes(weekday);
@@ -1163,6 +1178,23 @@ function EmployeeSheet({
                   </label>
                 </div>
                 <p className="text-xs text-slate-500">{periodPreview}</p>
+                {isPartialMonth && (
+                  <div>
+                    <FieldLabel hint={periodHoursText === "" ? "bắt buộc" : undefined}>
+                      Giờ làm tháng {month}/{year}
+                    </FieldLabel>
+                    <HoursInput
+                      placeholder="VD 80"
+                      warn={periodHoursText === ""}
+                      value={periodHoursText}
+                      onChange={(v) => set("periodMonthHours", { ...d.periodMonthHours, [periodKey]: v })}
+                    />
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      App dùng đúng số giờ này cho tháng {month}/{year}, không tự chia theo ngày. Các tháng
+                      đủ sau đó dùng {stunden}h/tháng như ở trên.
+                    </p>
+                  </div>
+                )}
               </>
             )}
           </SheetSection>

@@ -24,6 +24,29 @@ function isoOf(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+const monthKeyOf = (year: number, month: number) => `${year}-${String(month).padStart(2, "0")}`;
+
+/** true = Ein- oder Austritt fällt in diesen Monat (nicht ganz, nicht gar nicht beschäftigt). */
+export function isPartialEmploymentMonth(employee: Employee, year: number, month: number): boolean {
+  const active = activeDaysInMonth(employee, year, month);
+  return active > 0 && active < daysInMonth(year, month);
+}
+
+/** Vom Chef eingetragene Stunden für einen Ein-/Austrittsmonat (oder undefined). */
+export function periodMonthHoursOf(employee: Employee, year: number, month: number): number | undefined {
+  const value = employee.periodMonthHours?.[monthKeyOf(year, month)];
+  return Number.isFinite(value) ? value : undefined;
+}
+
+/** Teilmonat ohne eingetragene Stunden – muss vor dem Planen ausgefüllt werden. */
+export function needsPeriodMonthHours(employee: Employee, year: number, month: number): boolean {
+  return (
+    employee.employmentType !== "AZUBI" &&
+    isPartialEmploymentMonth(employee, year, month) &&
+    periodMonthHoursOf(employee, year, month) === undefined
+  );
+}
+
 /** Beschäftigte Kalendertage im Monat. */
 export function activeDaysInMonth(employee: Employee, year: number, month: number): number {
   const total = daysInMonth(year, month);
@@ -63,7 +86,14 @@ export function withEmploymentPeriodTarget(
       : { ...employee, baseTargetMinutes: undefined };
   }
   const base = employee.baseTargetMinutes ?? employee.targetMinutes;
-  const target = prorateForEmploymentPeriod(base, employee, year, month);
+  // Eingetragene Stunden für den Ein-/Austrittsmonat gehen vor (kein Kürzen).
+  const entered = isPartialEmploymentMonth(employee, year, month)
+    ? periodMonthHoursOf(employee, year, month)
+    : undefined;
+  const target =
+    entered !== undefined
+      ? Math.max(0, Math.round(entered)) * 60
+      : prorateForEmploymentPeriod(base, employee, year, month);
   const baseField = target === base ? undefined : base;
   if (employee.targetMinutes === target && employee.baseTargetMinutes === baseField) {
     return employee;
