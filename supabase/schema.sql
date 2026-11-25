@@ -46,3 +46,10 @@ create policy store_data_open
   to anon, authenticated
   using (true)
   with check (true);
+
+-- ----------------------------------------------------------------------------
+-- Rechte für die Browser-App (anon/publishable Key). Neue Supabase-Projekte
+-- (ab 2026) vergeben diese nicht mehr automatisch – ohne GRANT antwortet die
+-- API mit „permission denied for table store_data" (42501).
+-- ----------------------------------------------------------------------------
+grant select, insert, update, delete on table public.store_data to anon, authenticated;
