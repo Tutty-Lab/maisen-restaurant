@@ -162,3 +162,38 @@ describe("Mai Sen evening peak: 20:00–close is not busier than 17:00–20:00",
     }
   });
 });
+
+describe("Mai Sen: fixed days off are optional – the planner picks rest days itself", () => {
+  const free: Employee[] = team.map(({ fixedDaysOff: _drop, ...e }) => e as Employee);
+  const planned = generateSchedule({ year, month, storeId: "maisen", workHours, employees: free, holidayState: "NW" });
+
+  it("does not block planning when nobody chose fixed days off", async () => {
+    const { checkScheduleReadiness } = await import("../readiness");
+    const { fixedDaysOffRequired } = await import("../stores");
+    const r = checkScheduleReadiness(free, {
+      requireWorkRole: true,
+      requireFixedDaysOff: fixedDaysOffRequired("maisen"),
+      storeId: "maisen",
+      year,
+      month,
+    });
+    expect(r.issues.filter((i) => i.includes("ngày nghỉ cố định"))).toEqual([]);
+  });
+
+  it("still hits every target, never works Monday or more than 6 days in a row", () => {
+    for (const e of free) {
+      const mine = planned.filter((s) => s.employeeId === e.id);
+      expect(mine.reduce((a, s) => a + s.paidMinutes, 0), e.name).toBe(e.targetMinutes);
+      expect(mine.some((s) => new Date(`${s.date}T12:00:00`).getDay() === 1), e.name).toBe(false);
+    }
+    const errors = validateSchedule(free, planned, { year, month, storeId: "maisen", workHours, holidayState: "NW" })
+      .errors.filter((x) => x.severity !== "warning");
+    expect(errors).toEqual([]);
+  });
+
+  it("keeps a chosen day off (e.g. Azubi Mo + Di for school)", () => {
+    const withDays = free.map((e) => (e.id === "s1" ? { ...e, fixedDaysOff: ["monday", "tuesday"] as Employee["fixedDaysOff"] } : e));
+    const p = generateSchedule({ year, month, storeId: "maisen", workHours, employees: withDays, holidayState: "NW" });
+    expect(p.filter((s) => s.employeeId === "s1").some((s) => new Date(`${s.date}T12:00:00`).getDay() === 2)).toBe(false);
+  });
+});

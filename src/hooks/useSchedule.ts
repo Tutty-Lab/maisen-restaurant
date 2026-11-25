@@ -17,7 +17,7 @@ import {
   type DateOverride,
   type OverrideMap,
 } from "../lib/workHours";
-import { loadStoreId, saveStoreId, storeById, usesRolePlanning, type StoreConfig } from "../lib/stores";
+import { fixedDaysOffRequired, loadStoreId, saveStoreId, storeById, usesRolePlanning, type StoreConfig } from "../lib/stores";
 import {
   defaultAzubiConfig,
   withAutomaticAzubiTarget,
@@ -252,7 +252,7 @@ export function useSchedule() {
     () =>
       checkScheduleReadiness(schedule.employees, {
         requireWorkRole: usesRolePlanning(storeId),
-        requireFixedDaysOff: usesRolePlanning(storeId),
+        requireFixedDaysOff: fixedDaysOffRequired(storeId),
         storeId,
         year: schedule.year,
         month: schedule.month,

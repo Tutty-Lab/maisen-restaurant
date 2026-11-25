@@ -35,7 +35,7 @@ import {
   requiredFixedDaysOff,
   WEEKDAY_ORDER,
 } from "../lib/fixedDaysOff";
-import { allowsRoleSwitch, usesRolePlanning } from "../lib/stores";
+import { allowsRoleSwitch, fixedDaysOffRequired, usesRolePlanning } from "../lib/stores";
 
 // text-base (16px) auf dem Handy: iOS zoomt sonst beim Tippen hinein.
 const inputClass =
@@ -431,7 +431,6 @@ function EmployeeSummaryRow({
     : splitInfo(stunden, emp.employmentType);
   const tooMany = !isAzubi && stunden > WARN_HOURS;
   const requiredDaysOff = requiredFixedDaysOff(emp.employmentType);
-  const daysOffOk = hasRequiredFixedDaysOff(emp);
 
   return (
     <div className="flex-1 min-w-0">
@@ -468,9 +467,8 @@ function EmployeeSummaryRow({
           </span>
         )}
         {requiredDaysOff > 0 && (
-          <span className={daysOffOk ? "text-slate-400" : "text-amber-700 font-medium"}>
-            · nghỉ {(emp.fixedDaysOff ?? []).map((d) => WEEKDAY_LABELS[d]).join(" ") || "—"}
-            {!daysOffOk && ` (cần ${requiredDaysOff})`}
+          <span className="text-slate-400">
+            · nghỉ {(emp.fixedDaysOff ?? []).map((d) => WEEKDAY_LABELS[d]).join(" ") || "app tự xếp"}
           </span>
         )}
         {emp.desiredDaysPerWeek ? (
@@ -652,6 +650,7 @@ function EmployeeSheet({
   };
 
   const requiredDaysOff = requiredFixedDaysOff(d.employmentType);
+  const daysOffMandatory = fixedDaysOffRequired(storeId);
   const draftEmp: Employee = { id: "draft", ...draftToEmployee(d) };
   const daysOffOk = hasRequiredFixedDaysOff(draftEmp);
   const monthDays = new Date(year, month, 0).getDate();
@@ -933,7 +932,13 @@ function EmployeeSheet({
           </SheetSection>
 
           {requiredDaysOff > 0 && (
-            <SheetSection title={`Ngày nghỉ cố định · chọn ${requiredDaysOff}`}>
+            <SheetSection
+              title={
+                daysOffMandatory
+                  ? `Ngày nghỉ cố định · chọn ${requiredDaysOff}`
+                  : `Ngày nghỉ cố định · tuỳ chọn, tối đa ${requiredDaysOff}`
+              }
+            >
               <div className="grid grid-cols-7 gap-1">
                 {WEEKDAY_ORDER.map((weekday) => {
                   const selected = d.fixedDaysOff.includes(weekday);
@@ -957,9 +962,17 @@ function EmployeeSheet({
                   );
                 })}
               </div>
-              {!daysOffOk && (
-                <p className="text-xs text-amber-700">
-                  Đã chọn {d.fixedDaysOff.length}/{requiredDaysOff} ngày.
+              {daysOffMandatory ? (
+                !daysOffOk && (
+                  <p className="text-xs text-amber-700">
+                    Đã chọn {d.fixedDaysOff.length}/{requiredDaysOff} ngày.
+                  </p>
+                )
+              ) : (
+                <p className="text-xs text-slate-500">
+                  {d.fixedDaysOff.length === 0
+                    ? "Để trống → app tự chọn ngày nghỉ."
+                    : "Những ngày này không bao giờ xếp ca. Có thể chọn ngày quán nghỉ (T2)."}
                 </p>
               )}
             </SheetSection>

@@ -44,6 +44,15 @@ export function ownersCoverService(storeId: string | undefined): boolean {
 }
 
 /**
+ * Müssen Vollzeit (1) / Azubi (2) feste Ruhetage gewählt haben, bevor geplant
+ * wird? Mai Sen: nein (Chef, Nov 2026) – ohne Auswahl legt der Planer die
+ * freien Tage selbst; gewählte Tage (z. B. Mo = Ruhetag des Ladens) gelten.
+ */
+export function fixedDaysOffRequired(storeId: string | undefined): boolean {
+  return usesRolePlanning(storeId) && storeId !== "maisen";
+}
+
+/**
  * Darf jemand für einen Monat Bếp ↔ Bồi tauschen („Làm được cả Bếp và Bồi",
  * „Tìm cách xếp khác")? Mai Sen: nein – die Küche ist fest besetzt, bei
  * Engpässen kommen Teilzeit-Bồi dazu (Chef, Nov 2026).
