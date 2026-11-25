@@ -13,6 +13,7 @@ import {
 import { splitTargetHours, teilzeitShiftCount } from "../lib/splitTargetHours";
 import { describePreferredWindow, preferredWindowsOf } from "../lib/preferredWindows";
 import { employeesToFile, parseEmployeesFile } from "../lib/employeeFile";
+import { exactHoursFromPay, formatEuro, hoursFromPay, minimumWage, type PayConfig } from "../lib/pay";
 import { minutesToTime, timeToMinutes } from "../lib/time";
 import {
   activeDaysInMonth,
@@ -77,6 +78,10 @@ type Draft = {
   employmentType: EmploymentType;
   workRole: WorkRole | "";
   hours: string;
+  /** „hours" = Giờ/tháng direkt, „pay" = aus Lương tháng ÷ Lương giờ. */
+  hoursMode: "hours" | "pay";
+  monthlyGross: string;
+  hourlyWage: string;
   daysPerWeek: string;
   saved: boolean;
   fixedDaysOff: WeekdayName[];
@@ -97,6 +102,9 @@ function draftFrom(emp?: Employee): Draft {
     employmentType: emp?.employmentType ?? "VOLLZEIT",
     workRole: emp?.workRole ?? "",
     hours: emp ? String(fullMonthTargetMinutes(emp) / 60) : "176",
+    hoursMode: emp?.pay ? "pay" : "hours",
+    monthlyGross: emp?.pay ? String(emp.pay.monthlyGross) : "",
+    hourlyWage: emp?.pay ? String(emp.pay.hourlyWage) : "",
     daysPerWeek: emp?.desiredDaysPerWeek ? String(emp.desiredDaysPerWeek) : "",
     saved: emp?.saved === true,
     fixedDaysOff: emp?.fixedDaysOff ?? [],
@@ -140,9 +148,26 @@ function windowsFromDraft(d: Draft): Employee["preferredWindows"] {
   return out.length > 0 ? out : undefined;
 }
 
+/** Lohnangaben aus dem Formular – nur im Modus „Theo lương" und vollständig. */
+function payFromDraft(d: Draft): PayConfig | undefined {
+  if (d.employmentType === "AZUBI" || d.hoursMode !== "pay") return undefined;
+  const monthlyGross = Number(d.monthlyGross);
+  const hourlyWage = Number(d.hourlyWage);
+  if (!(monthlyGross > 0) || !(hourlyWage > 0)) return undefined;
+  return { monthlyGross, hourlyWage };
+}
+
+/** Wirksame Monatsstunden des Formulars (direkt oder aus dem Lohn). */
+function draftHours(d: Draft): number {
+  const pay = payFromDraft(d);
+  if (pay) return hoursFromPay(pay.monthlyGross, pay.hourlyWage);
+  if (d.hoursMode === "pay") return 0;
+  return Math.max(0, Math.round(Number(d.hours) || 0));
+}
+
 function draftToEmployee(d: Draft): Omit<Employee, "id"> {
   const isAzubi = d.employmentType === "AZUBI";
-  const stunden = Math.max(0, Math.round(Number(d.hours) || 0));
+  const stunden = draftHours(d);
   return {
     name: d.name.trim() || "Nhân viên mới",
     employmentType: d.employmentType,
@@ -170,6 +195,7 @@ function draftToEmployee(d: Draft): Omit<Employee, "id"> {
     shiftHours: shiftHoursFromDraft(d),
     spreadEvenly: d.spreadEvenly || undefined,
     preferredWindows: windowsFromDraft(d),
+    pay: payFromDraft(d),
   };
 }
 
@@ -413,6 +439,12 @@ function EmployeeSummaryRow({
           {!isAzubi && `${stunden}h · `}
           <span className={info.ok ? "" : "text-rose-600"}>{info.text}</span>
         </span>
+        {emp.pay && (
+          <span className={emp.pay.hourlyWage < minimumWage(year) ? "text-rose-600 font-medium" : "text-slate-400"}>
+            · {formatEuro(emp.pay.monthlyGross)} ÷ {formatEuro(emp.pay.hourlyWage)}/h
+            {emp.pay.hourlyWage < minimumWage(year) && ` (dưới lương tối thiểu ${year})`}
+          </span>
+        )}
         {requiredDaysOff > 0 && (
           <span className={daysOffOk ? "text-slate-400" : "text-amber-700 font-medium"}>
             · nghỉ {(emp.fixedDaysOff ?? []).map((d) => WEEKDAY_LABELS[d]).join(" ") || "—"}
@@ -493,6 +525,7 @@ function HoursInput({
   disabled,
   warn,
   decimal,
+  step,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -501,6 +534,7 @@ function HoursInput({
   disabled?: boolean;
   warn?: boolean;
   decimal?: boolean;
+  step?: number;
 }) {
   return (
     <div className="relative">
@@ -509,13 +543,13 @@ function HoursInput({
         inputMode={decimal ? "decimal" : "numeric"}
         enterKeyHint="done"
         min={0}
-        step={decimal ? 0.5 : 1}
+        step={step ?? (decimal ? 0.5 : 1)}
         disabled={disabled}
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onFocus={(e) => e.target.select()}
-        className={`${inputClass} w-full pr-10 tabular-nums ${warn ? "border-amber-400 text-amber-900" : ""} disabled:bg-slate-50 disabled:text-slate-400`}
+        className={`${inputClass} w-full ${unit.length > 2 ? "pr-12" : "pr-10"} tabular-nums ${warn ? "border-amber-400 text-amber-900" : ""} disabled:bg-slate-50 disabled:text-slate-400`}
       />
       <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
         {unit}
@@ -559,8 +593,14 @@ function EmployeeSheet({
 
   const showWorkRole = usesRolePlanning(storeId);
   const isAzubi = d.employmentType === "AZUBI";
-  const stunden = Math.max(0, Math.round(Number(d.hours) || 0));
+  const stunden = draftHours(d);
   const info = splitInfo(stunden, d.employmentType);
+  const minWage = minimumWage(year);
+  const nextYearMinWage = minimumWage(year + 1);
+  const grossNum = Number(d.monthlyGross);
+  const wageNum = Number(d.hourlyWage);
+  const exactPayHours = exactHoursFromPay(grossNum, wageNum);
+  const wageTooLow = d.hoursMode === "pay" && wageNum > 0 && wageNum < minWage;
   const tooMany = !isAzubi && stunden > WARN_HOURS;
 
   // ---- Azubi ----
@@ -710,8 +750,82 @@ function EmployeeSheet({
           <SheetSection title="Giờ làm">
             {!isAzubi ? (
               <div>
-                <FieldLabel hint={info.text}>Giờ / tháng</FieldLabel>
-                <HoursInput value={d.hours} onChange={(v) => set("hours", v)} warn={tooMany} />
+                <div className="mb-2">
+                  <Segmented<"hours" | "pay">
+                    value={d.hoursMode}
+                    onChange={(v) =>
+                      setD((prev) => ({
+                        ...prev,
+                        hoursMode: v,
+                        // Lương giờ mặc định = lương tối thiểu của năm đang xem.
+                        hourlyWage: v === "pay" && !prev.hourlyWage ? String(minWage) : prev.hourlyWage,
+                      }))
+                    }
+                    options={[
+                      { value: "hours", label: "Nhập giờ" },
+                      { value: "pay", label: "Theo lương" },
+                    ]}
+                  />
+                </div>
+                {d.hoursMode === "pay" ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <FieldLabel>Lương tháng (brutto)</FieldLabel>
+                        <HoursInput
+                          decimal
+                          step={0.01}
+                          unit="€"
+                          placeholder="VD 1150"
+                          value={d.monthlyGross}
+                          onChange={(v) => set("monthlyGross", v)}
+                        />
+                      </div>
+                      <div>
+                        <FieldLabel>Lương giờ</FieldLabel>
+                        <HoursInput
+                          decimal
+                          step={0.01}
+                          unit="€/h"
+                          warn={wageTooLow}
+                          value={d.hourlyWage}
+                          onChange={(v) => set("hourlyWage", v)}
+                        />
+                      </div>
+                    </div>
+                    <p className="mt-2 rounded bg-slate-50 px-3 py-2 text-sm text-slate-700 tabular-nums">
+                      {exactPayHours > 0 ? (
+                        <>
+                          {formatEuro(grossNum)} ÷ {formatEuro(wageNum)}/h ={" "}
+                          {exactPayHours.toFixed(1).replace(".", ",")}h →{" "}
+                          <b>{stunden}h / tháng</b>
+                          <span className="block text-[11px] text-slate-400">
+                            Làm tròn xuống để giờ × lương giờ không vượt lương tháng.
+                          </span>
+                        </>
+                      ) : (
+                        "Nhập lương tháng và lương giờ để tính giờ."
+                      )}
+                    </p>
+                    {wageTooLow && (
+                      <p className="mt-1 text-xs text-rose-600">
+                        ⚠ Dưới lương tối thiểu {year}: {formatEuro(minWage)}/h.
+                      </p>
+                    )}
+                    {!wageTooLow && wageNum > 0 && wageNum < nextYearMinWage && (
+                      <p className="mt-1 text-xs text-amber-700">
+                        Từ 01/01/{year + 1} lương tối thiểu là {formatEuro(nextYearMinWage)}/h – nhớ tăng
+                        lương giờ (giữ {formatEuro(grossNum)} thì chỉ còn{" "}
+                        {hoursFromPay(grossNum, nextYearMinWage)}h).
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <FieldLabel hint={info.text}>Giờ / tháng</FieldLabel>
+                    <HoursInput value={d.hours} onChange={(v) => set("hours", v)} warn={tooMany} />
+                  </>
+                )}
                 {!info.ok && <p className="mt-1 text-xs text-rose-600">{info.text}</p>}
                 {tooMany && <p className="mt-1 text-xs text-amber-700">⚠ trên {WARN_HOURS}h/tháng</p>}
               </div>

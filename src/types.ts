@@ -5,6 +5,7 @@
 
 import type { DateOverride, WorkHoursConfig } from "./lib/workHours";
 import type { HolidayState } from "./lib/holidays";
+import type { PayConfig } from "./lib/pay";
 
 export type EmploymentType = "VOLLZEIT" | "TEILZEIT" | "AZUBI";
 
@@ -135,6 +136,12 @@ export type Employee = {
    * gedacht – auf die Planung hat das Feld keinen Einfluss.
    */
   saved?: boolean;
+  /**
+   * „Theo lương": Monatslohn + Stundenlohn, aus denen das Monatssoll
+   * (targetMinutes) berechnet wurde. Fehlt das Feld, wurden die Stunden direkt
+   * eingetragen.
+   */
+  pay?: PayConfig;
 };
 
 /** Ein zusammenhängendes Stück Arbeitszeit. */
