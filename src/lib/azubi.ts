@@ -303,17 +303,27 @@ function isoOfDate(date: Date): string {
  * Wochen (Mo–So), die den Monat berühren, mit verfügbaren Tagen im Monat und in
  * der ganzen Woche (verfügbar = Laden offen und kein fester Schultag).
  */
+export type EmploymentPeriod = { startDate?: string; endDate?: string };
+
 export function azubiWeekShares(
   cfg: AzubiConfig | undefined,
   year: number,
   month: number,
   closedWeekdays: readonly WeekdayName[] = [],
+  period: EmploymentPeriod = {},
 ): { monday: string; inMonth: number; full: number }[] {
   const normalized = azubiConfigOf(cfg);
-  const available = (d: Date) => {
+  const openNoSchool = (d: Date) => {
     const weekday = WEEKDAY_BY_JS_DAY[d.getDay()];
     if (closedWeekdays.includes(weekday)) return false;
     return !isAzubiWeeklySchoolDate(normalized, isoOfDate(d));
+  };
+  // Vor Eintritt / nach Austritt zählt ein Tag nicht als Arbeitstag im Monat.
+  const employed = (d: Date) => {
+    const iso = isoOfDate(d);
+    if (period.startDate && iso < period.startDate) return false;
+    if (period.endDate && iso > period.endDate) return false;
+    return true;
   };
   const first = new Date(year, month - 1, 1);
   const last = new Date(year, month, 0);
@@ -326,9 +336,9 @@ export function azubiWeekShares(
     for (let i = 0; i < 7; i++) {
       const d = new Date(cursor);
       d.setDate(cursor.getDate() + i);
-      if (!available(d)) continue;
+      if (!openNoSchool(d)) continue;
       full += 1;
-      if (d >= first && d <= last) inMonth += 1;
+      if (d >= first && d <= last && employed(d)) inMonth += 1;
     }
     weeks.push({ monday: isoOfDate(cursor), inMonth, full });
     cursor.setDate(cursor.getDate() + 7);
@@ -347,10 +357,11 @@ export function azubiMonthHoursFromWeekly(
   year: number,
   month: number,
   closedWeekdays: readonly WeekdayName[] = [],
+  period: EmploymentPeriod = {},
 ): number {
   const weekly = azubiConfigOf(cfg).workWeeklyHours ?? 0;
   if (weekly <= 0) return 0;
-  return azubiWeekShares(cfg, year, month, closedWeekdays).reduce(
+  return azubiWeekShares(cfg, year, month, closedWeekdays, period).reduce(
     (sum, w) => sum + (w.full > 0 ? Math.round(((weekly * w.inMonth) / w.full) * 2) / 2 : 0),
     0,
   );
@@ -362,10 +373,11 @@ function azubiWorkMonthHours(
   year: number,
   month: number,
   closedWeekdays: readonly WeekdayName[] = [],
+  period: EmploymentPeriod = {},
 ): number {
   const override = cfg.workMonthHoursByMonth?.[azubiMonthKey(year, month)];
   if (override !== undefined) return override;
-  if ((cfg.workWeeklyHours ?? 0) > 0) return azubiMonthHoursFromWeekly(cfg, year, month, closedWeekdays);
+  if ((cfg.workWeeklyHours ?? 0) > 0) return azubiMonthHoursFromWeekly(cfg, year, month, closedWeekdays, period);
   return azubiMonthlyHoursOutOfTerm(cfg);
 }
 
@@ -382,6 +394,7 @@ export function azubiMonthlyHoursForMonth(
   year: number,
   month: number,
   closedWeekdays: readonly WeekdayName[] = [],
+  period: EmploymentPeriod = {},
 ): number {
   const normalized = azubiConfigOf(cfg);
   const mode = azubiMonthMode(normalized, year, month);
@@ -394,7 +407,7 @@ export function azubiMonthlyHoursForMonth(
   if (mode === "mixed") {
     return normalized.monthlyHoursByMonth?.[azubiMonthKey(year, month)] ?? 0;
   }
-  return azubiWorkMonthHours(normalized, year, month, closedWeekdays);
+  return azubiWorkMonthHours(normalized, year, month, closedWeekdays, period);
 }
 
 /** Status shown on the printed/exported timesheet for the selected month. */
@@ -426,8 +439,9 @@ export function azubiMonthlyMinutes(
   year: number,
   month: number,
   closedWeekdays: readonly WeekdayName[] = [],
+  period: EmploymentPeriod = {},
 ): number {
-  return Math.round(azubiMonthlyHoursForMonth(cfg, year, month, closedWeekdays) * 60);
+  return Math.round(azubiMonthlyHoursForMonth(cfg, year, month, closedWeekdays, period) * 60);
 }
 
 /** Soll eines Mitarbeiters - bei Azubis aus der Konfiguration, sonst eingetragen. */
@@ -452,7 +466,11 @@ export function withAutomaticAzubiTarget(
   const azubi = azubiConfigOf(employee.azubi);
   // Keine automatische Kürzung (Ein-/Austritt, Schulbeginn): der Chef trägt
   // das Soll für solche Monate selbst ein.
-  const targetMinutes = azubiMonthlyMinutes(azubi, year, month, closedWeekdays);
+  // „Giờ / tuần": nur Tage zwischen Eintritt und Austritt zählen.
+  const targetMinutes = azubiMonthlyMinutes(azubi, year, month, closedWeekdays, {
+    startDate: employee.startDate,
+    endDate: employee.endDate,
+  });
   const oldConfig = employee.azubi;
   const configChanged =
     !oldConfig ||

@@ -77,3 +77,23 @@ describe("Azubi: giờ làm theo tuần, luôn nghỉ 2 ngày", () => {
     expect(errors).toEqual([]);
   });
 });
+
+describe("Azubi giờ/tuần chỉ tính trong thời gian đi làm", () => {
+  const y1 = (patch: Partial<AzubiConfig> = {}) =>
+    cfg({ inSchoolTerm: true, schoolMode: "weekly", schoolWeekdays: ["monday", "tuesday"], workWeeklyHours: 24, ...patch });
+
+  it("vào làm 17.11 → chỉ 2 tuần (48h), nghỉ việc 15.11 → nửa tháng, chưa vào làm → 0h", () => {
+    const start = withAutomaticAzubiTarget(
+      { id: "n", name: "Neu", employmentType: "AZUBI", targetMinutes: 0, startDate: "2026-11-17", azubi: y1() }, 2026, 11, closed);
+    expect(start.targetMinutes).toBe(48 * 60);
+    const notYet = withAutomaticAzubiTarget(
+      { id: "f", name: "Future", employmentType: "AZUBI", targetMinutes: 0, startDate: "2026-12-01", azubi: y1() }, 2026, 11, closed);
+    expect(notYet.targetMinutes).toBe(0);
+    const full = withAutomaticAzubiTarget(
+      { id: "x", name: "Full", employmentType: "AZUBI", targetMinutes: 0, azubi: y1() }, 2026, 11, closed);
+    const leaving = withAutomaticAzubiTarget(
+      { id: "l", name: "Leaving", employmentType: "AZUBI", targetMinutes: 0, endDate: "2026-11-15", azubi: y1() }, 2026, 11, closed);
+    expect(leaving.targetMinutes).toBeLessThan(full.targetMinutes);
+    expect(leaving.targetMinutes).toBeGreaterThan(0);
+  });
+});

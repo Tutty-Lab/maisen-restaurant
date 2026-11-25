@@ -916,7 +916,10 @@ function EmployeeSheet({
                       {azubiWorkDaysPerWeek(d.azubi) < 5 ? `, đi học ${5 - azubiWorkDaysPerWeek(d.azubi)} ngày` : ""}.
                       {azubiMode === "work" && (
                         <>
-                          {" "}Tháng {month}/{year}: <b>{azubiMonthHoursFromWeekly(d.azubi, year, month, closedWeekdays)}h</b>
+                          {" "}Tháng {month}/{year}: <b>{azubiMonthHoursFromWeekly(d.azubi, year, month, closedWeekdays, {
+                            startDate: d.startDate || undefined,
+                            endDate: d.endDate || undefined,
+                          })}h</b>
                           {" "}(tuần đầu/cuối tháng tính theo số ngày trong tháng).
                         </>
                       )}{" "}

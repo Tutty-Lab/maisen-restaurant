@@ -191,7 +191,10 @@ function buildAzubiWeekCaps(input: GenerateInput): Map<string, Map<string, numbe
     if (!weekly || weekly <= 0) continue;
     const caps = new Map<string, number>();
     let sum = 0;
-    for (const w of azubiWeekShares(e.azubi, input.year, input.month, closed)) {
+    for (const w of azubiWeekShares(e.azubi, input.year, input.month, closed, {
+      startDate: e.startDate,
+      endDate: e.endDate,
+    })) {
       const minutes = w.full > 0 ? Math.round(((weekly * w.inMonth) / w.full) * 2) * 30 : 0;
       caps.set(weekKeyOf(w.monday), minutes);
       sum += minutes;
