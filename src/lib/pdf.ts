@@ -547,7 +547,7 @@ const shiftTimeLines = (shift: Shift): string[] =>
 
 /**
  * Eine Woche Dienstplan (A4 quer): Zeilen = Mitarbeiter (Küche, dann Service),
- * Spalten = Mo–So, Zelle = Arbeitszeit(en), rechts die Wochenstunden.
+ * Spalten = Mo–So, Zelle = Arbeitszeit(en). Keine Stunden – nur der Plan.
  * Tage außerhalb des Monats bleiben grau (der Plan gilt für genau einen Monat).
  */
 function drawDienstplanWeek(
@@ -587,8 +587,8 @@ function drawDienstplanWeek(
   const left = MARGIN;
   const right = pageW - MARGIN;
   const nameW = 44;
-  const sumW = 16;
-  const dayW = (right - left - nameW - sumW) / 7;
+  // Nur der Plan – keine Stunden-Spalte (Chef, Nov 2026).
+  const dayW = (right - left - nameW) / 7;
   const colX = (i: number) => left + nameW + i * dayW;
   const rowH = 8.6;
   const headH = 9;
@@ -616,8 +616,6 @@ function drawDienstplanWeek(
         doc.setFontSize(8.5);
       }
     });
-    doc.setTextColor(...INK);
-    doc.text(T("Std."), right - 1.5, y + 5.6, { align: "right" });
     y += headH;
     doc.setDrawColor(...LINE);
     doc.setLineWidth(0.3);
@@ -626,7 +624,6 @@ function drawDienstplanWeek(
   };
 
   let y = drawPageHead();
-  const dayTotals = days.map(() => 0);
 
   for (const group of groups) {
     if (y + 6 + rowH > pageH - 16) {
@@ -654,7 +651,6 @@ function drawDienstplanWeek(
       doc.setTextColor(...MUTED);
       doc.text(T(employmentLabelDe(e.employmentType)), left + 1.5, y + 7);
 
-      let weekMinutes = 0;
       days.forEach((d, i) => {
         const x = colX(i);
         const outside = !monthDates.has(d);
@@ -666,8 +662,6 @@ function drawDienstplanWeek(
         }
         const s = shiftOf.get(`${e.id}|${d}`);
         if (s) {
-          weekMinutes += s.paidMinutes;
-          dayTotals[i] += s.paidMinutes;
           const lines = shiftTimeLines(s);
           doc.setFont("helvetica", "bold");
           doc.setFontSize(lines.length > 1 ? 7.6 : 8.4);
@@ -682,11 +676,6 @@ function drawDienstplanWeek(
           doc.text(!employed ? "-" : school ? "Schule" : "frei", x + dayW / 2, y + 5.3, { align: "center" });
         }
       });
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8.5);
-      doc.setTextColor(...INK);
-      doc.text(minutesToDecimalHours(weekMinutes), right - 1.5, y + 5.3, { align: "right" });
-
       y += rowH;
       doc.setDrawColor(...DIVIDER);
       doc.setLineWidth(0.15);
@@ -694,29 +683,15 @@ function drawDienstplanWeek(
     }
   }
 
-  // Tagessummen
   doc.setDrawColor(...LINE);
   doc.setLineWidth(0.3);
   doc.line(left, y, right, y);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.setTextColor(...INK);
-  doc.text(T("Stunden gesamt"), left + 1.5, y + 4.6);
-  days.forEach((d, i) => {
-    if (!monthDates.has(d) || isClosed(d)) return;
-    doc.text(minutesToDecimalHours(dayTotals[i]), colX(i) + dayW / 2, y + 4.6, { align: "center" });
-  });
-  doc.text(minutesToDecimalHours(dayTotals.reduce((a, b) => a + b, 0)), right - 1.5, y + 4.6, { align: "right" });
-
-  // Senkrechte Linien
-  const tableTop = MARGIN + 1;
-  void tableTop;
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7);
   doc.setTextColor(...MUTED);
   doc.text(
-    T("Arbeitszeiten ohne Pause gerechnet (Std. = bezahlte Stunden). Grau = Ruhetag oder anderer Monat."),
+    T("Grau = Ruhetag oder anderer Monat."),
     left,
     pageH - 9,
   );
