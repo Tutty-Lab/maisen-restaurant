@@ -117,7 +117,7 @@ describe("Stundenaufzeichnung fuer Azubi", () => {
     expect(html).not.toContain("Zuschlagsstunden gesamt");
   });
 
-  it("shows only Gesamt-, Nacht- and Sonntagsstunden for regular employees", () => {
+  it("shows only Gesamtstunden – no Nacht-/Sonntagsstunden (Mai Sen)", () => {
     const employee: Employee = {
       id: "REGULAR-PRINT",
       name: "Regular Test",
@@ -165,9 +165,11 @@ describe("Stundenaufzeichnung fuer Azubi", () => {
       createElement(StundenzettelPage, { schedule, employee }),
     );
 
-    // Nur leere Felder für Gesamt-, Nacht- und Sonntagsstunden (von Hand).
-    expect(html).toContain("Nachtstunden (ab 20 Uhr)");
-    expect(html).toContain("Sonntagsstunden");
+    // Nur ein leeres Feld für die Gesamtstunden (von Hand) – Mai Sen braucht
+    // keine Nacht-/Sonntagsstunden auf dem Zettel.
+    expect(html).toContain("Gesamtstunden");
+    expect(html).not.toContain("Nachtstunden");
+    expect(html).not.toContain("Sonntagsstunden");
     expect(html).not.toContain("2,00 h");
     expect(html).not.toContain("Sollstunden");
     expect(html).not.toContain("Differenz");

@@ -406,12 +406,9 @@ function drawStundenzettel(
   const summaryY = pageH - 30;
   const col3 = (pageW - 2 * MARGIN) / 3;
 
-  // Leere Schreiblinien – der Chef trägt die Stunden von Hand ein.
-  // Azubis bekommen keine Zuschläge – nur die Gesamtstunden.
-  const summary =
-    employee.employmentType === "AZUBI"
-      ? ["Gesamtstunden"]
-      : ["Gesamtstunden", "Nachtstunden (ab 20 Uhr)", "Sonntagsstunden"];
+  // Leere Schreiblinie – der Chef trägt die Stunden von Hand ein.
+  // Mai Sen: keine Nacht-/Sonntagsstunden auf dem Zettel (Chef, Nov 2026).
+  const summary = ["Gesamtstunden"];
   summary.forEach((label, i) => {
     const x = MARGIN + i * col3;
     doc.setFont("helvetica", "normal");
@@ -472,11 +469,11 @@ function drawUebersicht(
   const left = MARGIN;
   const right = pageW - MARGIN;
   const numW = 46;
+  void numW;
+  // Mai Sen: nur Gesamtstunden – keine Nacht-/Sonntagsspalten (Chef, Nov 2026).
   const cols = [
     { label: "Mitarbeiter", x: left, align: "left" as const },
-    { label: "Gesamtstunden", x: right - 2 * numW, align: "right" as const },
-    { label: "Nachtstunden (ab 20 Uhr)", x: right - numW, align: "right" as const },
-    { label: "Sonntagsstunden", x: right, align: "right" as const },
+    { label: "Gesamtstunden", x: right, align: "right" as const },
   ];
   const rowH = 6.5;
   const line = (yy: number, color = DIVIDER, width = 0.2) => {
@@ -496,40 +493,27 @@ function drawUebersicht(
   y += rowH;
   line(y, LINE, 0.3);
 
-  const sum = { total: 0, night: 0, sunday: 0 };
+  let sumTotal = 0;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   for (const employee of employees) {
     const stats = hourStatsFor(schedule.shifts, employee.id, dates);
-    const azubi = employee.employmentType === "AZUBI";
-    sum.total += stats.total;
-    if (!azubi) {
-      sum.night += stats.night;
-      sum.sunday += stats.sunday;
-    }
+    sumTotal += stats.total;
     cell(employee.name, cols[0], y + 4.3);
     cell(minutesToDecimalHours(stats.total), cols[1], y + 4.3);
-    cell(azubi ? "—" : minutesToDecimalHours(stats.night), cols[2], y + 4.3);
-    cell(azubi ? "—" : minutesToDecimalHours(stats.sunday), cols[3], y + 4.3);
     y += rowH;
     line(y);
   }
   line(y, LINE, 0.3);
   doc.setFont("helvetica", "bold");
   cell("Summe", cols[0], y + 4.3);
-  cell(minutesToDecimalHours(sum.total), cols[1], y + 4.3);
-  cell(minutesToDecimalHours(sum.night), cols[2], y + 4.3);
-  cell(minutesToDecimalHours(sum.sunday), cols[3], y + 4.3);
+  cell(minutesToDecimalHours(sumTotal), cols[1], y + 4.3);
   y += rowH + 4;
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(...MUTED);
-  const note =
-    "Nachtstunden: bezahlte Arbeitszeit ab 20:00 Uhr (ohne Pause), ohne Sonntage. " +
-    "Sonntagsstunden: gesamte bezahlte Arbeitszeit an Sonntagen (nicht doppelt als Nacht gezählt). " +
-    "Azubis (—): keine Zuschläge. Angaben in Stunden.";
-  doc.text(doc.splitTextToSize(T(note), right - left), left, y);
+  doc.text(T("Bezahlte Arbeitszeit ohne Pause, Angaben in Stunden."), left, y);
 }
 
 // ── Datei ausliefern ─────────────────────────────────────────────────────────

@@ -51,8 +51,6 @@ export function StundenzettelPage({
   // Beim Wochen-Zettel zählen nur die Dienste der gezeigten Tage.
   const shownShifts = employeeShifts.filter((s) => rows.includes(s.date));
   const totalMinutes = shownShifts.reduce((total, shift) => total + shift.paidMinutes, 0);
-  // Azubi receive no Zuschlaege; keep their timesheet focused on worked hours.
-  const isAzubi = employee.employmentType === "AZUBI";
   const holidayNames = holidayNamesOf(schedule.year, schedule.holidayState);
   const closedByDate = new Map(
     schedule.dateOverrides.filter((o) => o.closed).map((o) => [o.date, o] as const),
@@ -166,12 +164,6 @@ export function StundenzettelPage({
       {/* Leere Felder – der Chef trägt die Stunden von Hand ein. */}
       <div className="mt-3 grid grid-cols-3 gap-4 text-[12px]">
         <HandField label="Gesamtstunden" />
-        {!isAzubi && (
-          <>
-            <HandField label="Nachtstunden (ab 20 Uhr)" />
-            <HandField label="Sonntagsstunden" />
-          </>
-        )}
       </div>
     </div>
   );
