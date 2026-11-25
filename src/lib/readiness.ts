@@ -89,6 +89,20 @@ export function checkScheduleReadiness(
     issues.push("Azubi phải chọn đúng 2 ngày nghỉ cố định mỗi tuần.");
   }
 
+  // „Vừa học vừa làm" ohne Schultag ergibt keinen Sinn – nachfragen.
+  const noWeekdays = employees.filter(
+    (e) =>
+      e.employmentType === "AZUBI" &&
+      e.azubi?.inSchoolTerm &&
+      e.azubi.schoolMode === "weekly" &&
+      (e.azubi.schoolWeekdays ?? []).length === 0,
+  );
+  if (noWeekdays.length > 0) {
+    issues.push(
+      `Chọn ngày đi học trong tuần (Vừa học vừa làm) cho: ${noWeekdays.map((e) => e.name).join(", ")}.`,
+    );
+  }
+
   // Azubi-Stunden rechnet die App nicht selbst: Monat mit Schulbeginn/-ende
   // braucht eine Eingabe des Chefs (0 ist erlaubt).
   if (options.year !== undefined && options.month !== undefined) {

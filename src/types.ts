@@ -38,6 +38,18 @@ export type AzubiConfig = {
   schoolTermEnd?: string;
   /** @deprecated Altdaten; Schultage beeinflussen die Planung nicht mehr. */
   schoolDays: WeekdayName[];
+  /**
+   * Art der Berufsschule: „block" = mehrere Wochen am Stück (schoolBlocks),
+   * „weekly" = feste Schultage pro Woche (schoolWeekdays). Fehlt = block.
+   */
+  schoolMode?: "block" | "weekly";
+  /** Blockunterricht: beliebig viele Zeiträume (ISO, inklusiv). */
+  schoolBlocks?: { start: string; end: string }[];
+  /** Teilzeitunterricht: feste Schultage je Woche – dort wird nicht geplant. */
+  schoolWeekdays?: WeekdayName[];
+  /** Optional: Schultage gelten nur in diesem Zeitraum (z. B. Schuljahr ohne Ferien). */
+  schoolWeeklyStart?: string;
+  schoolWeeklyEnd?: string;
   /** Vom Chef gesetztes Monatssoll ausserhalb der Schulzeit. */
   monthlyHoursOutOfTerm?: number;
   /** Exaktes Monatssoll fuer gemischte Schul-/Arbeitsmonate, Schluessel yyyy-MM. */

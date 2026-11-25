@@ -78,19 +78,47 @@ function monthlyHoursFrom(source: AzubiConfig): number {
   return DEFAULT_AZUBI_MONTHLY_HOURS_OUT_OF_TERM;
 }
 
+type DateRange = { start: string; end: string };
+
+function normalizeRange(start: string | undefined, end: string | undefined): DateRange | null {
+  const s = normalizeIsoDate(start);
+  const e = normalizeIsoDate(end);
+  if (!s && !e) return null;
+  const a = s ?? e!;
+  const b = e ?? s!;
+  return a <= b ? { start: a, end: b } : { start: b, end: a };
+}
+
+/** Blöcke bereinigt + sortiert; Altdaten (ein Von/Bis) werden zum ersten Block. */
+function normalizeBlocks(source: AzubiConfig): DateRange[] {
+  const raw = source.schoolBlocks ?? [];
+  const blocks = (raw.length > 0 ? raw : [{ start: source.schoolTermStart ?? "", end: source.schoolTermEnd ?? "" }])
+    .map((b) => normalizeRange(b.start, b.end))
+    .filter((b): b is DateRange => b !== null)
+    .sort((x, y) => x.start.localeCompare(y.start));
+  return blocks;
+}
+
 function normalizedAzubiConfig(cfg: AzubiConfig | undefined): AzubiConfig {
   const source = cfg ?? DEFAULT_AZUBI_CONFIG;
-  const rawStart = normalizeIsoDate(source.schoolTermStart);
-  const rawEnd = normalizeIsoDate(source.schoolTermEnd);
-  const schoolTermStart = rawStart && rawEnd && rawStart > rawEnd ? rawEnd : rawStart;
-  const schoolTermEnd = rawStart && rawEnd && rawStart > rawEnd ? rawStart : rawEnd;
+  const schoolMode = source.schoolMode === "weekly" ? "weekly" : "block";
+  const blocks = normalizeBlocks(source);
+  // Altfelder spiegeln den Gesamtzeitraum aller Blöcke (für ältere Leser).
+  const schoolTermStart = blocks[0]?.start;
+  const schoolTermEnd = blocks[blocks.length - 1]?.end;
+  const schoolWeekdays = [...new Set(source.schoolWeekdays ?? [])];
+  const weekly = normalizeRange(source.schoolWeeklyStart, source.schoolWeeklyEnd);
   const monthlyHoursByMonth = normalizeMonthlyHoursByMonth(source.monthlyHoursByMonth);
   const workMonthHoursByMonth = normalizeMonthlyHoursByMonth(source.workMonthHoursByMonth);
 
   return {
     inSchoolTerm: source.inSchoolTerm,
+    ...(source.schoolMode && { schoolMode }),
     ...(schoolTermStart && { schoolTermStart }),
     ...(schoolTermEnd && { schoolTermEnd }),
+    ...(blocks.length > 0 && { schoolBlocks: blocks }),
+    ...(schoolWeekdays.length > 0 && { schoolWeekdays }),
+    ...(weekly && { schoolWeeklyStart: weekly.start, schoolWeeklyEnd: weekly.end }),
     schoolDays: [...(source.schoolDays ?? [])],
     monthlyHoursOutOfTerm: monthlyHoursFrom(source),
     ...(monthlyHoursByMonth && { monthlyHoursByMonth }),
@@ -112,49 +140,65 @@ export function azubiMonthlyHoursOutOfTerm(cfg: AzubiConfig | undefined): number
   return azubiConfigOf(cfg).monthlyHoursOutOfTerm ?? DEFAULT_AZUBI_MONTHLY_HOURS_OUT_OF_TERM;
 }
 
-/** Konfigurierter Zeitraum; null ohne konkrete Daten (Altdaten = ganzer Monat). */
+/** Blockunterricht-Zeiträume (leer im Modus „weekly" oder ohne Schule). */
+export function azubiSchoolBlocks(cfg: AzubiConfig | undefined): DateRange[] {
+  const normalized = azubiConfigOf(cfg);
+  if (!normalized.inSchoolTerm || normalized.schoolMode === "weekly") return [];
+  return normalized.schoolBlocks ?? [];
+}
+
+/** Gesamtzeitraum aller Blöcke; null ohne konkrete Daten (Altdaten = ganzer Monat). */
 export function azubiSchoolTermRange(
   cfg: AzubiConfig | undefined,
 ): { start: string; end: string } | null {
-  const normalized = azubiConfigOf(cfg);
-  if (!normalized.inSchoolTerm) return null;
-
-  if (normalized.schoolTermStart && normalized.schoolTermEnd) {
-    return { start: normalized.schoolTermStart, end: normalized.schoolTermEnd };
-  }
-  if (normalized.schoolTermStart) {
-    return { start: normalized.schoolTermStart, end: normalized.schoolTermStart };
-  }
-  if (normalized.schoolTermEnd) {
-    return { start: normalized.schoolTermEnd, end: normalized.schoolTermEnd };
-  }
-  return null;
+  const blocks = azubiSchoolBlocks(cfg);
+  if (blocks.length === 0) return null;
+  return { start: blocks[0].start, end: blocks[blocks.length - 1].end };
 }
 
-/** true = das Datum liegt innerhalb des konfigurierten Schulzeitraums. */
+/** true = das Datum liegt in einem Blockunterricht-Zeitraum. */
 export function isAzubiSchoolTermDate(
   cfg: AzubiConfig | undefined,
   isoDate: string,
 ): boolean {
   const normalized = azubiConfigOf(cfg);
-  if (!normalized.inSchoolTerm) return false;
+  if (!normalized.inSchoolTerm || normalized.schoolMode === "weekly") return false;
+  const blocks = azubiSchoolBlocks(normalized);
+  // Altdaten ohne Datum: wie früher der ganze Monat (Soll von Hand).
+  if (blocks.length === 0) return true;
+  return blocks.some((b) => isoDate >= b.start && isoDate <= b.end);
+}
 
-  const range = azubiSchoolTermRange(normalized);
-  if (!range) return true;
-  return isoDate >= range.start && isoDate <= range.end;
+const WEEKDAY_BY_JS_DAY = [
+  "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
+] as const;
+
+/** Teilzeitunterricht: fester Schultag an diesem Datum? */
+export function isAzubiWeeklySchoolDate(
+  cfg: AzubiConfig | undefined,
+  isoDate: string,
+): boolean {
+  const normalized = azubiConfigOf(cfg);
+  if (!normalized.inSchoolTerm || normalized.schoolMode !== "weekly") return false;
+  const days = normalized.schoolWeekdays ?? [];
+  if (days.length === 0) return false;
+  if (normalized.schoolWeeklyStart && isoDate < normalized.schoolWeeklyStart) return false;
+  if (normalized.schoolWeeklyEnd && isoDate > normalized.schoolWeeklyEnd) return false;
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return days.includes(WEEKDAY_BY_JS_DAY[new Date(y, m - 1, d).getDay()]);
 }
 
 /**
  * true = der Azubi ist an diesem Tag in der Berufsschule und wird NICHT
- * eingeplant. Gilt nur mit konkretem Zeitraum (Von/Bis); Altdaten ohne Datum
- * behalten das frühere Verhalten (Monatssoll von Hand, Tage frei planbar).
+ * eingeplant: in einem Block (mit konkretem Datum) oder an einem festen
+ * Schultag. Altdaten ohne Datum blockieren keine Tage.
  */
 export function isAzubiBlockedSchoolDate(
   cfg: AzubiConfig | undefined,
   isoDate: string,
 ): boolean {
-  const range = azubiSchoolTermRange(cfg);
-  return !!range && isoDate >= range.start && isoDate <= range.end;
+  if (isAzubiWeeklySchoolDate(cfg, isoDate)) return true;
+  return azubiSchoolBlocks(cfg).some((b) => isoDate >= b.start && isoDate <= b.end);
 }
 
 /** @deprecated Schultage blockieren keine Arbeitstage mehr. */
@@ -197,24 +241,29 @@ export function azubiMonthMode(
   return "mixed";
 }
 
-/** Alle Monate, die (ganz oder teilweise) im Schulzeitraum liegen. */
+/** Alle Monate, die (ganz oder teilweise) in einem Schulblock liegen. */
 export function azubiTermMonths(cfg: AzubiConfig | undefined): { year: number; month: number }[] {
-  const range = azubiSchoolTermRange(cfg);
-  if (!range) return [];
-  let year = Number(range.start.slice(0, 4));
-  let month = Number(range.start.slice(5, 7));
-  const endYear = Number(range.end.slice(0, 4));
-  const endMonth = Number(range.end.slice(5, 7));
+  const seen = new Set<string>();
   const result: { year: number; month: number }[] = [];
-  while (year < endYear || (year === endYear && month <= endMonth)) {
-    result.push({ year, month });
-    month += 1;
-    if (month === 13) {
-      month = 1;
-      year += 1;
+  for (const block of azubiSchoolBlocks(cfg)) {
+    let year = Number(block.start.slice(0, 4));
+    let month = Number(block.start.slice(5, 7));
+    const endYear = Number(block.end.slice(0, 4));
+    const endMonth = Number(block.end.slice(5, 7));
+    while (year < endYear || (year === endYear && month <= endMonth)) {
+      const key = `${year}-${month}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push({ year, month });
+      }
+      month += 1;
+      if (month === 13) {
+        month = 1;
+        year += 1;
+      }
     }
   }
-  return result;
+  return result.sort((a, b) => a.year - b.year || a.month - b.month);
 }
 
 /** Stabiler Schluessel fuer eine monatsspezifische Azubi-Vorgabe. */
@@ -322,6 +371,11 @@ export function withAutomaticAzubiTarget(
     !oldConfig ||
     oldConfig.schoolTermStart !== azubi.schoolTermStart ||
     oldConfig.schoolTermEnd !== azubi.schoolTermEnd ||
+    JSON.stringify(oldConfig.schoolBlocks ?? null) !== JSON.stringify(azubi.schoolBlocks ?? null) ||
+    oldConfig.schoolMode !== azubi.schoolMode ||
+    JSON.stringify(oldConfig.schoolWeekdays ?? null) !== JSON.stringify(azubi.schoolWeekdays ?? null) ||
+    oldConfig.schoolWeeklyStart !== azubi.schoolWeeklyStart ||
+    oldConfig.schoolWeeklyEnd !== azubi.schoolWeeklyEnd ||
     oldConfig.monthlyHoursOutOfTerm !== azubi.monthlyHoursOutOfTerm ||
     !monthlyHoursMapsEqual(oldConfig.monthlyHoursByMonth, azubi.monthlyHoursByMonth) ||
     !monthlyHoursMapsEqual(oldConfig.workMonthHoursByMonth, azubi.workMonthHoursByMonth) ||

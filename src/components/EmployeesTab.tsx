@@ -25,6 +25,7 @@ import {
   azubiMonthKey,
   azubiMonthMode,
   azubiSchoolTermRange,
+  azubiSchoolBlocks,
   azubiMonthlyHoursNeedWarning,
   azubiMonthlyHoursForMonth,
   azubiTermMonths,
@@ -127,6 +128,13 @@ function draftFrom(emp?: Employee): Draft {
       end: minutesToTime(w.endMinutes),
     })),
   };
+}
+
+/** Tag nach einem ISO-Datum (yyyy-MM-dd). */
+function nextIsoDay(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const next = new Date(y, m - 1, d + 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
 }
 
 /** „Độ dài ca" aus dem Formular: beide Werte > 0, sonst nicht gesetzt. */
@@ -625,6 +633,13 @@ function EmployeeSheet({
   const azubiWarning = azubiMonthlyHoursNeedWarning(d.azubi, year, month);
   const monthDates = datesOfMonth(year, month);
   const termMonths = azubiTermMonths(d.azubi);
+  const schoolKind: "none" | "block" | "weekly" = !d.azubi.inSchoolTerm
+    ? "none"
+    : d.azubi.schoolMode === "weekly"
+      ? "weekly"
+      : "block";
+  const schoolBlocks = d.azubi.schoolBlocks ?? azubiSchoolBlocks(d.azubi);
+  const schoolWeekdays = d.azubi.schoolWeekdays ?? [];
   const setMonthMap = (
     field: "monthlyHoursByMonth" | "workMonthHoursByMonth",
     key: string,
@@ -952,95 +967,209 @@ function EmployeeSheet({
 
           {isAzubi && (
             <SheetSection title="Đi học ở trường (Berufsschule)">
-              {!(d.azubi.inSchoolTerm && hasTermDates) ? (
+              <Segmented<"none" | "block" | "weekly">
+                value={schoolKind}
+                onChange={(v) => {
+                  if (v === "none") {
+                    setAzubi({ inSchoolTerm: false });
+                  } else if (v === "block") {
+                    setAzubi({
+                      inSchoolTerm: true,
+                      schoolMode: "block",
+                      schoolBlocks:
+                        schoolBlocks.length > 0
+                          ? schoolBlocks
+                          : [{ start: monthDates[0], end: monthDates[monthDates.length - 1] }],
+                    });
+                  } else {
+                    setAzubi({ inSchoolTerm: true, schoolMode: "weekly" });
+                  }
+                }}
+                options={[
+                  { value: "none", label: "Không" },
+                  { value: "block", label: "Học liền" },
+                  { value: "weekly", label: "Vừa học vừa làm" },
+                ]}
+              />
+
+              {schoolKind === "none" && (
+                <p className="text-xs text-slate-500">Không đi học → app xếp ca bình thường.</p>
+              )}
+
+              {schoolKind === "block" && (
                 <>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setAzubi({
-                        inSchoolTerm: true,
-                        schoolTermStart: d.azubi.schoolTermStart ?? monthDates[0],
-                        schoolTermEnd: d.azubi.schoolTermEnd ?? monthDates[monthDates.length - 1],
-                      })
-                    }
-                    className="w-full rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-left text-sm text-slate-600"
-                  >
-                    + Thêm đợt đi học <span className="text-slate-400">(học liền nhiều tuần)</span>
-                  </button>
                   <p className="text-xs text-slate-500">
-                    Chưa có đợt học nào → app xếp ca bình thường.
+                    Học liền nhiều tuần ở trường. Trong các đợt học, app <b>không xếp ca</b>.
                   </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-xs text-slate-500">
-                    Trong những ngày đi học, app <b>không xếp ca</b> cho bạn này.
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="block">
-                      <FieldLabel>Đi học từ ngày</FieldLabel>
-                      <input
-                        type="date"
-                        className={`${inputClass} w-full`}
-                        value={d.azubi.schoolTermStart ?? ""}
-                        max={d.azubi.schoolTermEnd}
-                        onChange={(e) => e.target.value && setAzubi({ schoolTermStart: e.target.value })}
-                      />
-                    </label>
-                    <label className="block">
-                      <FieldLabel>Đến ngày</FieldLabel>
-                      <input
-                        type="date"
-                        className={`${inputClass} w-full`}
-                        value={d.azubi.schoolTermEnd ?? ""}
-                        min={d.azubi.schoolTermStart}
-                        onChange={(e) => e.target.value && setAzubi({ schoolTermEnd: e.target.value })}
-                      />
-                    </label>
+                  <div className="space-y-2">
+                    {schoolBlocks.map((b, i) => (
+                      <div key={i} className="rounded-lg border border-slate-200 p-2">
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className="text-xs font-medium text-slate-600">Đợt {i + 1}</span>
+                          <button
+                            type="button"
+                            aria-label={`Xoá đợt ${i + 1}`}
+                            onClick={() => {
+                              const next = schoolBlocks.filter((_, k) => k !== i);
+                              setAzubi(
+                                next.length > 0
+                                  ? { schoolBlocks: next }
+                                  : { inSchoolTerm: false, schoolBlocks: undefined, schoolTermStart: undefined, schoolTermEnd: undefined },
+                              );
+                            }}
+                            className="rounded px-2 py-1 text-sm text-rose-600 hover:bg-rose-50"
+                          >
+                            Xoá
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="block">
+                            <FieldLabel>Từ ngày</FieldLabel>
+                            <input
+                              type="date"
+                              className={`${inputClass} w-full`}
+                              value={b.start}
+                              max={b.end}
+                              onChange={(e) =>
+                                e.target.value &&
+                                setAzubi({
+                                  schoolBlocks: schoolBlocks.map((x, k) => (k === i ? { ...x, start: e.target.value } : x)),
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="block">
+                            <FieldLabel>Đến ngày</FieldLabel>
+                            <input
+                              type="date"
+                              className={`${inputClass} w-full`}
+                              value={b.end}
+                              min={b.start}
+                              onChange={(e) =>
+                                e.target.value &&
+                                setAzubi({
+                                  schoolBlocks: schoolBlocks.map((x, k) => (k === i ? { ...x, end: e.target.value } : x)),
+                                })
+                              }
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const last = schoolBlocks[schoolBlocks.length - 1];
+                        const start = last ? nextIsoDay(last.end) : monthDates[0];
+                        setAzubi({ schoolBlocks: [...schoolBlocks, { start, end: start }] });
+                      }}
+                      className="w-full rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-left text-sm text-slate-600"
+                    >
+                      + Thêm đợt học
+                    </button>
                   </div>
-                  <div className="divide-y divide-slate-100 rounded-lg border border-slate-200">
-                    {termMonths.map(({ year: y, month: m }) => {
-                      const mode = azubiMonthMode(d.azubi, y, m);
-                      const key = azubiMonthKey(y, m);
-                      return (
-                        <div
-                          key={key}
-                          className={`px-3 py-2 ${y === year && m === month ? "bg-slate-50" : ""}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="w-20 shrink-0 text-sm font-medium text-slate-700">
-                              Tháng {m}/{y}
-                            </span>
-                            {mode === "school" ? (
-                              <span className="text-sm text-slate-500">Đi học cả tháng → không xếp ca</span>
-                            ) : (
-                              <div className="flex-1">
-                                <HoursInput
-                                  decimal
-                                  placeholder="Giờ làm"
-                                  warn={d.azubi.monthlyHoursByMonth?.[key] === undefined}
-                                  value={String(d.azubi.monthlyHoursByMonth?.[key] ?? "")}
-                                  onChange={(v) => setMonthMap("monthlyHoursByMonth", key, v)}
-                                />
-                              </div>
+                  {termMonths.length > 0 && (
+                    <div className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+                      {termMonths.map(({ year: y, month: m }) => {
+                        const mode = azubiMonthMode(d.azubi, y, m);
+                        const key = azubiMonthKey(y, m);
+                        return (
+                          <div key={key} className={`px-3 py-2 ${y === year && m === month ? "bg-slate-50" : ""}`}>
+                            <div className="flex items-center gap-3">
+                              <span className="w-20 shrink-0 text-sm font-medium text-slate-700">
+                                Tháng {m}/{y}
+                              </span>
+                              {mode === "school" ? (
+                                <span className="text-sm text-slate-500">Đi học cả tháng → không xếp ca</span>
+                              ) : (
+                                <div className="flex-1">
+                                  <HoursInput
+                                    decimal
+                                    placeholder="Giờ làm"
+                                    warn={d.azubi.monthlyHoursByMonth?.[key] === undefined}
+                                    value={String(d.azubi.monthlyHoursByMonth?.[key] ?? "")}
+                                    onChange={(v) => setMonthMap("monthlyHoursByMonth", key, v)}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                            {mode !== "school" && (
+                              <p className="mt-1 text-[11px] text-slate-400">
+                                Vừa học vừa làm – nhập số giờ đi làm ở quán trong tháng này.
+                              </p>
                             )}
                           </div>
-                          {mode !== "school" && (
-                            <p className="mt-1 text-[11px] text-slate-400">
-                              Vừa học vừa làm – nhập số giờ đi làm ở quán trong tháng này.
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {schoolKind === "weekly" && (
+                <>
+                  <div>
+                    <FieldLabel hint={schoolWeekdays.length === 0 ? "chọn ít nhất 1" : undefined}>
+                      Ngày đi học trong tuần
+                    </FieldLabel>
+                    <div className="grid grid-cols-7 gap-1">
+                      {WEEKDAY_ORDER.map((weekday) => {
+                        const on = schoolWeekdays.includes(weekday);
+                        return (
+                          <button
+                            key={weekday}
+                            type="button"
+                            aria-pressed={on}
+                            onClick={() =>
+                              setAzubi({
+                                schoolWeekdays: on
+                                  ? schoolWeekdays.filter((x) => x !== weekday)
+                                  : WEEKDAY_ORDER.filter((x) => x === weekday || schoolWeekdays.includes(x)),
+                              })
+                            }
+                            className={`rounded-md border py-2 text-sm font-medium ${
+                              on ? "border-teal-700 bg-teal-700 text-white" : "border-slate-200 bg-white text-slate-600"
+                            }`}
+                          >
+                            {WEEKDAY_LABELS[weekday]}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setAzubi({ inSchoolTerm: false, schoolTermStart: undefined, schoolTermEnd: undefined })}
-                    className="text-sm text-rose-600 underline"
-                  >
-                    Xoá đợt học
-                  </button>
+                  {schoolWeekdays.some((w) => d.fixedDaysOff.includes(w)) && (
+                    <p className="text-xs text-amber-700">
+                      ⚠ {schoolWeekdays.filter((w) => d.fixedDaysOff.includes(w)).map((w) => WEEKDAY_LABELS[w]).join(", ")}{" "}
+                      vừa là ngày nghỉ cố định vừa là ngày đi học – nên chọn ngày nghỉ cố định khác.
+                    </p>
+                  )}
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block">
+                      <FieldLabel hint="tuỳ chọn">Áp dụng từ</FieldLabel>
+                      <input
+                        type="date"
+                        className={`${inputClass} w-full`}
+                        value={d.azubi.schoolWeeklyStart ?? ""}
+                        max={d.azubi.schoolWeeklyEnd}
+                        onChange={(e) => setAzubi({ schoolWeeklyStart: e.target.value || undefined })}
+                      />
+                    </label>
+                    <label className="block">
+                      <FieldLabel hint="tuỳ chọn">đến</FieldLabel>
+                      <input
+                        type="date"
+                        className={`${inputClass} w-full`}
+                        value={d.azubi.schoolWeeklyEnd ?? ""}
+                        min={d.azubi.schoolWeeklyStart}
+                        onChange={(e) => setAzubi({ schoolWeeklyEnd: e.target.value || undefined })}
+                      />
+                    </label>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Những ngày này app <b>không xếp ca</b> (để trống ngày = áp dụng luôn). Ngày đi học cũng tính
+                    là ngày làm, nên hãy nhập <b>giờ làm ở quán</b> vào ô “Mức chung / tháng” ở trên – ví dụ
+                    39h/tuần: học 1 ngày → khoảng 135h, học 2 ngày → khoảng 101h.
+                  </p>
                 </>
               )}
             </SheetSection>

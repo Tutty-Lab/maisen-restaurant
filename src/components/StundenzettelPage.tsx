@@ -8,7 +8,7 @@ import {
 import { minutesToDecimalHours, minutesToTime } from "../lib/time";
 import { MONTH_NAMES_DE } from "../lib/dateFormat";
 import { holidayNames as holidayNamesOf } from "../lib/holidays";
-import { azubiTimesheetMode, isAzubiSchoolTermDate } from "../lib/azubi";
+import { azubiTimesheetMode, isAzubiSchoolTermDate, isAzubiWeeklySchoolDate } from "../lib/azubi";
 import { format } from "date-fns";
 
 // Deutscher Monats-Titel für das offizielle Dokument.
@@ -102,7 +102,7 @@ export function StundenzettelPage({
             const isSchoolTermWeekday =
               employee.employmentType === "AZUBI" &&
               !isWeekend &&
-              isAzubiSchoolTermDate(employee.azubi, d);
+              (isAzubiSchoolTermDate(employee.azubi, d) || isAzubiWeeklySchoolDate(employee.azubi, d));
             let bemerkung: string;
             if (s) {
               bemerkung = holiday ? `Feiertag: ${holiday}` : "";
