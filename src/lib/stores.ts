@@ -34,6 +34,16 @@ export function usesRolePlanning(storeId: string | undefined): boolean {
 }
 
 /**
+ * Mai Sen: zwei Chefs sind immer im Laden (Chef, Nov 2026). Sie springen im
+ * Service ein und schließen auf – fehlende Bồi sind daher kein Fehler, sondern
+ * nur ein Hinweis „chủ đứng Bồi"; die 2-Leute-Öffnungsregel entfällt. Die
+ * Küche muss weiter immer besetzt sein.
+ */
+export function ownersCoverService(storeId: string | undefined): boolean {
+  return storeId === "maisen";
+}
+
+/**
  * Darf jemand für einen Monat Bếp ↔ Bồi tauschen („Làm được cả Bếp và Bồi",
  * „Tìm cách xếp khác")? Mai Sen: nein – die Küche ist fest besetzt, bei
  * Engpässen kommen Teilzeit-Bồi dazu (Chef, Nov 2026).

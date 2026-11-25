@@ -18,7 +18,7 @@ import { isEmployeeFixedDayOff } from "./fixedDaysOff";
 import { unavailableReason } from "./availability";
 import { azubiMonthCapacityBreakdown, type AzubiWeekCapacity } from "./scheduler";
 import { ROLES, dayRoleIssues, roleCountAt, roleLabel } from "./roleCoverage";
-import { allowsRoleSwitch, usesRolePlanning } from "./stores";
+import { allowsRoleSwitch, ownersCoverService, usesRolePlanning } from "./stores";
 
 export type ValidationErrorKind = "coverage" | "hours" | "shift" | "rule";
 
@@ -295,7 +295,8 @@ export function validateSchedule(
         if (shift.date !== date) return false;
         return (shift.segments?.[0]?.startMinutes ?? shift.startMinutes) === openingStart;
       }).length;
-      if (openerCount < 2) {
+      // Mai Sen: die zwei Chefs sind immer da und öffnen mit.
+      if (openerCount < 2 && !ownersCoverService(context.storeId)) {
         errors.push({
           date,
           message: `Ngày ${date}: cần ít nhất 2 nhân viên mở cửa trước 30 phút (hiện có ${openerCount}).`,
@@ -384,6 +385,17 @@ function roleErrorsForDay(
 
   const out: ValidationError[] = [];
   for (const g of issues.gaps) {
+    if (g.role === "SERVICE" && ownersCoverService(storeId)) {
+      out.push({
+        date,
+        kind: "coverage",
+        severity: "warning",
+        message: `Ngày ${date}: không có Bồi lúc ${slotText(g.slots)} → chủ đứng Bồi.`,
+        reason: "Hai chủ luôn có mặt ở quán nên giờ này chủ làm Bồi – không phải lỗi.",
+        suggestion: "Không cần làm gì. Muốn bớt giờ cho chủ thì tăng giờ hoặc thêm một Bồi bán thời gian.",
+      });
+      continue;
+    }
     out.push({
       date,
       kind: "coverage",
@@ -410,6 +422,8 @@ function roleErrorsForDay(
     });
   }
   for (const e of issues.eveningBelowLunch) {
+    // Mai Sen: im Service gleichen die Chefs abends aus.
+    if (e.role === "SERVICE" && ownersCoverService(storeId)) continue;
     out.push({
       date,
       kind: "coverage",

@@ -104,3 +104,34 @@ describe("Mai Sen soft rules (few staff: keep them light)", () => {
     expect(thienlongStaffingProfile("saturday", false, "maisen").minStaff).toBe(0);
   });
 });
+
+describe("Mai Sen: two owners are always there and stand in as Bồi", () => {
+  // Tháng Azubi đi học: chỉ 2 bếp + 1 bồi bán thời gian còn lại.
+  const thin: Employee[] = [
+    { id: "k1", name: "Bếp nóng", employmentType: "VOLLZEIT", targetMinutes: 173 * 60, workRole: "KITCHEN", fixedDaysOff: ["monday"] },
+    { id: "k3", name: "Phụ bếp", employmentType: "VOLLZEIT", targetMinutes: 169 * 60, workRole: "KITCHEN", fixedDaysOff: ["monday"] },
+    { id: "s3", name: "Teilzeit Bồi", employmentType: "TEILZEIT", targetMinutes: 82 * 60, workRole: "SERVICE" },
+  ];
+  const ctx = { year: 2026, month: 12, storeId: "maisen", workHours, holidayState: "NW" as const };
+  const planned = generateSchedule({ ...ctx, employees: thin });
+  const result = validateSchedule(thin, planned, ctx);
+  const errors = result.errors.filter((e) => e.severity !== "warning");
+  const warnings = result.errors.filter((e) => e.severity === "warning");
+
+  it("does not report missing Bồi or a missing second opener as errors", () => {
+    expect(errors.filter((e) => e.message.includes("Bồi"))).toEqual([]);
+    expect(errors.filter((e) => e.message.includes("mở cửa"))).toEqual([]);
+  });
+
+  it("notes when the owners stand in as Bồi", () => {
+    expect(warnings.some((e) => e.message.includes("chủ đứng Bồi"))).toBe(true);
+  });
+
+  it("still requires a cook at every open hour", () => {
+    // Beide Köche an einem Freitag gestrichen → Bếp fehlt; das bleibt ein Fehler.
+    const date = "2026-12-04";
+    const noCook = planned.filter((s) => !(s.date === date && (s.employeeId === "k1" || s.employeeId === "k3")));
+    const check = validateSchedule(thin, noCook, ctx).errors.filter((e) => e.severity !== "warning");
+    expect(check.some((e) => e.date === date && e.message.includes("không có Bếp"))).toBe(true);
+  });
+});
