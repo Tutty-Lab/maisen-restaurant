@@ -651,6 +651,11 @@ function EmployeeSheet({
   };
 
   const canSave = !(showWorkRole && !d.workRole) && d.name.trim().length > 0;
+  const softRuleCount =
+    (shiftHoursFromDraft(d) ? 1 : 0) + (d.spreadEvenly ? 1 : 0) + (d.windows.length > 0 ? 1 : 0);
+  // Nur beim Öffnen entscheiden, ob „Luật riêng" aufgeklappt startet – sonst
+  // klappte es beim Löschen der letzten Regel mitten im Bearbeiten zu.
+  const [softRulesOpenInitially] = useState(() => softRuleCount > 0);
 
   return (
     <div
@@ -1010,7 +1015,25 @@ function EmployeeSheet({
             </SheetSection>
           )}
 
-          <SheetSection title="Luật riêng (mềm – xếp theo khi được)">
+          {/* Luật riêng mềm: ít dùng → thu gọn, chỉ mở sẵn khi người này đã có luật. */}
+          <details
+            className="group rounded-lg border border-slate-200"
+            open={softRulesOpenInitially || undefined}
+          >
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                Luật riêng (mềm)
+              </span>
+              {softRuleCount > 0 && (
+                <span className="rounded bg-teal-50 px-1.5 py-0.5 text-[11px] font-medium text-teal-700">
+                  {softRuleCount} đang bật
+                </span>
+              )}
+              <span className="ml-auto text-xs text-slate-400 group-open:hidden">Mở ▾</span>
+              <span className="ml-auto hidden text-xs text-slate-400 group-open:inline">Thu gọn ▴</span>
+            </summary>
+            <div className="space-y-3 border-t border-slate-100 px-3 pb-3 pt-3">
+            <p className="text-xs text-slate-500">Không bắt buộc – app xếp theo khi được. Bỏ trống = mặc định.</p>
             <div>
               <FieldLabel hint="bỏ trống = mặc định">Độ dài ca</FieldLabel>
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
@@ -1103,7 +1126,8 @@ function EmployeeSheet({
                 + Thêm khung giờ <span className="text-slate-400">(ví dụ T2–T6 10:30–15:00)</span>
               </button>
             </div>
-          </SheetSection>
+            </div>
+          </details>
 
           <SheetSection title="Thời gian làm việc">
             {!showPeriod ? (
