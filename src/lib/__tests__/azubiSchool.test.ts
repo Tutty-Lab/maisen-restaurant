@@ -91,3 +91,36 @@ describe("Vừa học vừa làm (feste Schultage pro Woche)", () => {
     expect(mine.reduce((sum, s) => sum + s.paidMinutes, 0)).toBe(101 * 60);
   });
 });
+
+describe("Ví dụ của chủ: đi học 09.11.2026 – 02.03.2027, lịch làm theo tháng", () => {
+  const cfg = base({ schoolMode: "block", schoolBlocks: [{ start: "2026-11-09", end: "2027-03-02" }] });
+
+  it("knows each month: Nov part work, Dec–Feb school, Mar part work", () => {
+    expect(azubiMonthMode(cfg, 2026, 11)).toBe("mixed");
+    expect(azubiMonthMode(cfg, 2026, 12)).toBe("school");
+    expect(azubiMonthMode(cfg, 2027, 2)).toBe("school");
+    expect(azubiMonthMode(cfg, 2027, 3)).toBe("mixed");
+  });
+
+  it("November plan: shifts only 01.–08.11, none from 09.11 on", () => {
+    const withNovHours = { ...cfg, monthlyHoursByMonth: { "2026-11": 40 } };
+    const azubi = withAutomaticAzubiTarget(
+      { id: "a", name: "Azubi", employmentType: "AZUBI", targetMinutes: 0, workRole: "SERVICE", fixedDaysOff: ["monday", "sunday"], azubi: withNovHours },
+      2026, 11,
+    );
+    expect(azubi.targetMinutes).toBe(40 * 60);
+    const team: Employee[] = [
+      azubi,
+      { id: "k", name: "Koch", employmentType: "VOLLZEIT", targetMinutes: 173 * 60, workRole: "KITCHEN", fixedDaysOff: ["monday"] },
+      { id: "s", name: "Bồi", employmentType: "TEILZEIT", targetMinutes: 82 * 60, workRole: "SERVICE" },
+    ];
+    const shifts = generateSchedule({
+      year: 2026, month: 11, storeId: "maisen", workHours: defaultWorkHoursForStore("maisen"),
+      employees: team, holidayState: "NW",
+    });
+    const mine = shifts.filter((s) => s.employeeId === "a");
+    expect(mine.length).toBeGreaterThan(0);
+    expect(mine.every((s) => s.date <= "2026-11-08")).toBe(true);
+    expect(mine.reduce((sum, s) => sum + s.paidMinutes, 0)).toBe(40 * 60);
+  });
+});
