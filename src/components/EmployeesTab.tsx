@@ -35,7 +35,7 @@ import {
   requiredFixedDaysOff,
   WEEKDAY_ORDER,
 } from "../lib/fixedDaysOff";
-import { usesRolePlanning } from "../lib/stores";
+import { allowsRoleSwitch, usesRolePlanning } from "../lib/stores";
 
 // text-base (16px) auf dem Handy: iOS zoomt sonst beim Tippen hinein.
 const inputClass =
@@ -717,7 +717,7 @@ function EmployeeSheet({
                 />
               </div>
             )}
-            {showWorkRole && d.workRole && (
+            {showWorkRole && allowsRoleSwitch(storeId) && d.workRole && (
               <div className="rounded-lg border border-slate-200">
                 <label className="flex items-center justify-between gap-3 px-3 py-2.5">
                   <span className="text-sm text-slate-700">

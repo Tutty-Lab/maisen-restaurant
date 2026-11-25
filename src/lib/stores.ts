@@ -33,6 +33,15 @@ export function usesRolePlanning(storeId: string | undefined): boolean {
   return storeId === "maisen" || storeId === "thienlong";
 }
 
+/**
+ * Darf jemand für einen Monat Bếp ↔ Bồi tauschen („Làm được cả Bếp và Bồi",
+ * „Tìm cách xếp khác")? Mai Sen: nein – die Küche ist fest besetzt, bei
+ * Engpässen kommen Teilzeit-Bồi dazu (Chef, Nov 2026).
+ */
+export function allowsRoleSwitch(storeId: string | undefined): boolean {
+  return usesRolePlanning(storeId) && storeId !== "maisen";
+}
+
 export const DEFAULT_STORE_ID = STORES[0].id;
 
 /** Merkt sich die zuletzt gewählte Filiale auf diesem Gerät. */

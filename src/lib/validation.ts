@@ -18,7 +18,7 @@ import { isEmployeeFixedDayOff } from "./fixedDaysOff";
 import { unavailableReason } from "./availability";
 import { azubiMonthCapacityBreakdown, type AzubiWeekCapacity } from "./scheduler";
 import { ROLES, dayRoleIssues, roleCountAt, roleLabel } from "./roleCoverage";
-import { usesRolePlanning } from "./stores";
+import { allowsRoleSwitch, usesRolePlanning } from "./stores";
 
 export type ValidationErrorKind = "coverage" | "hours" | "shift" | "rule";
 
@@ -371,6 +371,12 @@ function roleErrorsForDay(
     const spare =
       times.length > 0 &&
       times.every((t) => roleCountAt(dayShifts, roleOf, other, t) > (other === "KITCHEN" ? 2 : 1));
+    if (!allowsRoleSwitch(storeId)) {
+      // Mai Sen: Bếp fest besetzt – Lücken nur durch Verschieben oder mehr Teilzeit-Bồi.
+      return role === "KITCHEN"
+        ? "Kéo dài hoặc dời ca của một Bếp vào giờ đó (bấm vào ca)."
+        : "Kéo dài hoặc dời ca của một Bồi vào giờ đó (bấm vào ca), hoặc tăng giờ / thêm một Bồi bán thời gian.";
+    }
     return spare
       ? `Lúc đó ${roleLabel(other)} dư người. Bấm “Tìm cách xếp khác” để thử cho một người làm ${roleLabel(role)} cả tháng.`
       : `Kéo dài hoặc dời ca của một ${roleLabel(role)} vào giờ đó (bấm vào ca), hoặc bấm “Tìm cách xếp khác”.`;

@@ -7,7 +7,7 @@ import {
   findRoleSwitchOptions,
   type RoleSwitchResult,
 } from "../lib/suggestions";
-import { usesRolePlanning } from "../lib/stores";
+import { allowsRoleSwitch, usesRolePlanning } from "../lib/stores";
 
 const GROUPS: { kind: ValidationErrorKind; title: string }[] = [
   { kind: "coverage", title: "Thiếu người theo giờ" },
@@ -211,7 +211,7 @@ export function ValidationPanel({ store }: { store: UseScheduleReturn }) {
       )}
       {errors.length > 0 && <IssueList items={errors} tone="error" />}
       {warnings.length > 0 && <IssueList items={warnings} tone="warning" />}
-      {isThienlong && hasRoleProblems && <RoleSwitchFinder store={store} />}
+      {isThienlong && allowsRoleSwitch(store.storeId) && hasRoleProblems && <RoleSwitchFinder store={store} />}
     </div>
   );
 }
