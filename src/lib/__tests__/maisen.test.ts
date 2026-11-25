@@ -217,3 +217,18 @@ describe("Mai Sen: everyone gets at least 1 day off every calendar week", () => 
     }
   });
 });
+
+describe("Mai Sen: Dienstplan PDF (in lịch)", () => {
+  it("has one landscape page per week of the month", async () => {
+    const { buildDienstplanPdf } = await import("../pdf");
+    const { weeksOfMonth } = await import("../weeks");
+    const schedule = {
+      companyName: "Mai Sen (DVB Gastro GmbH)", address: "Beethovenallee 9, 53173 Bonn-Bad Godesberg",
+      holidayState: "NW" as const, year, month, workHours, dateOverrides: [], employees: team, shifts,
+    };
+    const weeks = weeksOfMonth(year, month).map((w) => w.weekStart);
+    const doc = buildDienstplanPdf(schedule, team, weeks);
+    expect(doc.getNumberOfPages()).toBe(weeks.length);
+    expect(doc.internal.pageSize.getWidth()).toBeGreaterThan(doc.internal.pageSize.getHeight());
+  });
+});

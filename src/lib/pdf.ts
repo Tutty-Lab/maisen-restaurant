@@ -29,6 +29,7 @@ import { minutesToDecimalHours, minutesToTime } from "./time";
 import { MONTH_NAMES_DE } from "./dateFormat";
 import { holidayNames } from "./holidays";
 import { hourStatsFor } from "./zuschlaege";
+import { isAzubiBlockedSchoolDate } from "./azubi";
 import { format } from "date-fns";
 
 /** Dateiname säubern: Umlaute/Akzente weg, nur unbedenkliche Zeichen behalten. */
@@ -514,6 +515,222 @@ function drawUebersicht(
   doc.setFontSize(7.5);
   doc.setTextColor(...MUTED);
   doc.text(T("Bezahlte Arbeitszeit ohne Pause, Angaben in Stunden."), left, y);
+}
+
+// ── Dienstplan (Lịch làm việc) ─────────────────────────────────────────────
+
+const WEEK_ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
+const WEEKDAY_SHORT_DE: Record<(typeof WEEK_ORDER)[number], string> = {
+  monday: "Mo", tuesday: "Di", wednesday: "Mi", thursday: "Do", friday: "Fr", saturday: "Sa", sunday: "So",
+};
+
+function isoPlusDays(iso: string, days: number): string {
+  const d = parseIsoDate(iso);
+  d.setDate(d.getDate() + days);
+  return format(d, "yyyy-MM-dd");
+}
+
+/** ISO-Kalenderwoche (KW) eines Datums. */
+function isoWeekNumber(iso: string): number {
+  const d = parseIsoDate(iso);
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return Math.ceil(((t.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
+
+const shiftTimeLines = (shift: Shift): string[] =>
+  (shift.segments?.length ? shift.segments : [{ startMinutes: shift.startMinutes, endMinutes: shift.endMinutes }]).map(
+    (g) => `${minutesToTime(g.startMinutes)}-${minutesToTime(g.endMinutes)}`,
+  );
+
+/**
+ * Eine Woche Dienstplan (A4 quer): Zeilen = Mitarbeiter (Küche, dann Service),
+ * Spalten = Mo–So, Zelle = Arbeitszeit(en), rechts die Wochenstunden.
+ * Tage außerhalb des Monats bleiben grau (der Plan gilt für genau einen Monat).
+ */
+function drawDienstplanWeek(
+  doc: jsPDF,
+  schedule: Schedule,
+  employees: Employee[],
+  weekStart: string,
+  monthDates: ReadonlySet<string>,
+): void {
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const days = WEEK_ORDER.map((_, i) => isoPlusDays(weekStart, i));
+  const inMonth = days.filter((d) => monthDates.has(d));
+  const fmt = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
+  const period = `KW ${isoWeekNumber(weekStart)} · ${fmt(inMonth[0])}-${fmt(inMonth[inMonth.length - 1])}${schedule.year}`;
+  const holidays = holidayNames(schedule.year, schedule.holidayState);
+  const closedOverride = new Map(schedule.dateOverrides.filter((o) => o.closed).map((o) => [o.date, o] as const));
+  const closedWeekday = new Set(
+    WEEK_ORDER.filter((k) => (schedule.workHours.perWeekday[k] ?? []).length === 0),
+  );
+  const isClosed = (iso: string) =>
+    closedOverride.has(iso) || (!holidays.has(iso) && closedWeekday.has(weekdayKeyOf(parseIsoDate(iso)) as never));
+
+  const shiftOf = new Map<string, Shift>();
+  for (const s of schedule.shifts) if (days.includes(s.date)) shiftOf.set(`${s.employeeId}|${s.date}`, s);
+
+  // Nur Leute, die in dieser Woche beschäftigt sind (Ein-/Austritt).
+  const active = employees.filter((e) =>
+    inMonth.some((d) => (!e.startDate || d >= e.startDate) && (!e.endDate || d <= e.endDate)),
+  );
+  const groups: { label: string; people: Employee[] }[] = [
+    { label: "Küche", people: active.filter((e) => e.workRole === "KITCHEN") },
+    { label: "Service", people: active.filter((e) => e.workRole === "SERVICE") },
+    { label: "Weitere", people: active.filter((e) => e.workRole !== "KITCHEN" && e.workRole !== "SERVICE") },
+  ].filter((g) => g.people.length > 0);
+
+  const left = MARGIN;
+  const right = pageW - MARGIN;
+  const nameW = 44;
+  const sumW = 16;
+  const dayW = (right - left - nameW - sumW) / 7;
+  const colX = (i: number) => left + nameW + i * dayW;
+  const rowH = 8.6;
+  const headH = 9;
+
+  const drawPageHead = (): number => {
+    let y = drawHeader(doc, "Dienstplan", schedule, period) + 1;
+    doc.setFillColor(...HEAD_FILL);
+    doc.rect(left, y, right - left, headH, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...INK);
+    doc.text(T("Mitarbeiter"), left + 1.5, y + 5.6);
+    days.forEach((d, i) => {
+      const cx = colX(i) + dayW / 2;
+      const outside = !monthDates.has(d);
+      doc.setTextColor(...(outside ? GRID : INK));
+      doc.text(T(`${WEEKDAY_SHORT_DE[WEEK_ORDER[i]]} ${fmt(d)}`), cx, y + 4, { align: "center" });
+      const note = holidays.get(d) ?? (isClosed(d) ? "Ruhetag" : "");
+      if (note) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6.5);
+        doc.setTextColor(...MUTED);
+        doc.text(T(note.length > 18 ? `${note.slice(0, 17)}.` : note), cx, y + 7.6, { align: "center" });
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8.5);
+      }
+    });
+    doc.setTextColor(...INK);
+    doc.text(T("Std."), right - 1.5, y + 5.6, { align: "right" });
+    y += headH;
+    doc.setDrawColor(...LINE);
+    doc.setLineWidth(0.3);
+    doc.line(left, y, right, y);
+    return y;
+  };
+
+  let y = drawPageHead();
+  const dayTotals = days.map(() => 0);
+
+  for (const group of groups) {
+    if (y + 6 + rowH > pageH - 16) {
+      doc.addPage("a4", "landscape");
+      y = drawPageHead();
+    }
+    doc.setFillColor(...SHADE_FILL);
+    doc.rect(left, y, right - left, 5.5, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...LINE);
+    doc.text(T(group.label), left + 1.5, y + 3.9);
+    y += 5.5;
+
+    for (const e of group.people) {
+      if (y + rowH > pageH - 16) {
+        doc.addPage("a4", "landscape");
+        y = drawPageHead();
+      }
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.setTextColor(...INK);
+      doc.text(T(e.name), left + 1.5, y + 3.8, { maxWidth: nameW - 3 });
+      doc.setFontSize(6.5);
+      doc.setTextColor(...MUTED);
+      doc.text(T(employmentLabelDe(e.employmentType)), left + 1.5, y + 7);
+
+      let weekMinutes = 0;
+      days.forEach((d, i) => {
+        const x = colX(i);
+        const outside = !monthDates.has(d);
+        const employed = (!e.startDate || d >= e.startDate) && (!e.endDate || d <= e.endDate);
+        if (outside || isClosed(d)) {
+          doc.setFillColor(...SHADE_FILL);
+          doc.rect(x, y, dayW, rowH, "F");
+          return;
+        }
+        const s = shiftOf.get(`${e.id}|${d}`);
+        if (s) {
+          weekMinutes += s.paidMinutes;
+          dayTotals[i] += s.paidMinutes;
+          const lines = shiftTimeLines(s);
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(lines.length > 1 ? 7.6 : 8.4);
+          doc.setTextColor(...INK);
+          const top = lines.length > 1 ? y + 3.5 : y + 5.3;
+          lines.forEach((ln, k) => doc.text(ln, x + dayW / 2, top + k * 3.4, { align: "center" }));
+        } else {
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7.5);
+          doc.setTextColor(...GRID);
+          const school = e.employmentType === "AZUBI" && isAzubiBlockedSchoolDate(e.azubi, d);
+          doc.text(!employed ? "-" : school ? "Schule" : "frei", x + dayW / 2, y + 5.3, { align: "center" });
+        }
+      });
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(...INK);
+      doc.text(minutesToDecimalHours(weekMinutes), right - 1.5, y + 5.3, { align: "right" });
+
+      y += rowH;
+      doc.setDrawColor(...DIVIDER);
+      doc.setLineWidth(0.15);
+      doc.line(left, y, right, y);
+    }
+  }
+
+  // Tagessummen
+  doc.setDrawColor(...LINE);
+  doc.setLineWidth(0.3);
+  doc.line(left, y, right, y);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...INK);
+  doc.text(T("Stunden gesamt"), left + 1.5, y + 4.6);
+  days.forEach((d, i) => {
+    if (!monthDates.has(d) || isClosed(d)) return;
+    doc.text(minutesToDecimalHours(dayTotals[i]), colX(i) + dayW / 2, y + 4.6, { align: "center" });
+  });
+  doc.text(minutesToDecimalHours(dayTotals.reduce((a, b) => a + b, 0)), right - 1.5, y + 4.6, { align: "right" });
+
+  // Senkrechte Linien
+  const tableTop = MARGIN + 1;
+  void tableTop;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(...MUTED);
+  doc.text(
+    T("Arbeitszeiten ohne Pause gerechnet (Std. = bezahlte Stunden). Grau = Ruhetag oder anderer Monat."),
+    left,
+    pageH - 9,
+  );
+}
+
+/** Dienstplan als PDF (A4 quer): eine Seite je Woche des Monats bzw. der gewählten Woche. */
+export function buildDienstplanPdf(schedule: Schedule, employees: Employee[], weekStarts: string[]): jsPDF {
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape", compress: true });
+  const monthDates = new Set(datesOfMonth(schedule.year, schedule.month));
+  weekStarts.forEach((ws, i) => {
+    if (i > 0) doc.addPage("a4", "landscape");
+    drawDienstplanWeek(doc, schedule, employees, ws, monthDates);
+  });
+  return doc;
 }
 
 // ── Datei ausliefern ─────────────────────────────────────────────────────────

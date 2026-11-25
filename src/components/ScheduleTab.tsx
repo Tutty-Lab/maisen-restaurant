@@ -25,6 +25,7 @@ import { ShiftTimes } from "./ShiftTimes";
 import { isEmployeeFixedDayOff } from "../lib/fixedDaysOff";
 import { unavailableReason } from "../lib/availability";
 import { usesRolePlanning } from "../lib/stores";
+import { DienstplanExport } from "./DienstplanExport";
 
 function isWeekendKey(iso: string): boolean {
   const k = weekdayKeyOf(parseIsoDate(iso));
@@ -174,6 +175,7 @@ export function ScheduleTab({ store }: { store: UseScheduleReturn }) {
       {/* Thanh thao tác */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <SavedSchedulesButton store={store} />
+        <DienstplanExport store={store} />
         <span className="ml-auto text-sm text-slate-500">{monthLabel(schedule.year, schedule.month)}</span>
       </div>
 
