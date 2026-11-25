@@ -187,3 +187,9 @@ export function normalizeWorkHours(
   }
   return { perWeekday, holiday: toBlocks(partial?.holiday, base.holiday) };
 }
+
+/** Wochentage, an denen der Laden laut Arbeitszeit-Fenster ganz zu ist (z. B. Mai Sen: Mo). */
+export function closedWeekdaysOf(config: WorkHoursConfig | undefined): WeekdayKey[] {
+  if (!config) return [];
+  return (Object.keys(config.perWeekday) as WeekdayKey[]).filter((k) => config.perWeekday[k].length === 0);
+}

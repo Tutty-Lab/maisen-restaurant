@@ -51,6 +51,7 @@ import {
 } from "./preferredWindows";
 import { calculatePause, presenceFromPaid } from "./time";
 import {
+  closedWeekdaysOf,
   effectiveWeekdayKey,
   resolveDay,
   longestBlockMinutes,
@@ -74,6 +75,7 @@ import {
 } from "./thienlongDemand";
 import { usesRolePlanning } from "./stores";
 import { taperLateEvening } from "./maisenPeak";
+import { azubiWeekShares, azubiWorkDaysPerWeek } from "./azubi";
 
 export type GenerateInput = {
   year: number;
@@ -175,6 +177,30 @@ function buildThienlongRawTargets(
   );
 }
 
+/**
+ * Mai Sen: Wochendecken je Azubi mit „Giờ làm / tuần" – nur wenn ihre Summe
+ * genau das Monatssoll ergibt (sonst hat der Chef den Monat von Hand gesetzt,
+ * dann gilt die normale Wochendecke).
+ */
+function buildAzubiWeekCaps(input: GenerateInput): Map<string, Map<string, number>> {
+  const result = new Map<string, Map<string, number>>();
+  if (input.storeId !== "maisen") return result;
+  const closed = closedWeekdaysOf(input.workHours);
+  for (const e of input.employees) {
+    const weekly = e.employmentType === "AZUBI" ? e.azubi?.workWeeklyHours : undefined;
+    if (!weekly || weekly <= 0) continue;
+    const caps = new Map<string, number>();
+    let sum = 0;
+    for (const w of azubiWeekShares(e.azubi, input.year, input.month, closed)) {
+      const minutes = w.full > 0 ? Math.round(((weekly * w.inMonth) / w.full) * 2) * 30 : 0;
+      caps.set(weekKeyOf(w.monday), minutes);
+      sum += minutes;
+    }
+    if (sum === e.targetMinutes) result.set(e.id, caps);
+  }
+  return result;
+}
+
 let shiftIdCounter = 0;
 function nextShiftId(): string {
   shiftIdCounter += 1;
@@ -194,9 +220,23 @@ function weekKeyOf(isoDate: string): string {
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 }
 
-/** Wochendecke in Minuten – nur Azubis haben eine. */
-function weeklyCapMinutes(employee: Employee): number | null {
+/**
+ * Mai Sen, „Giờ làm / tuần": Wochendecke je Woche (Schlüssel weekKeyOf), deren
+ * Summe genau das Monatssoll ergibt – so bekommt jede volle Woche exakt die
+ * Wochenstunden. Wird zu Beginn von generateSchedule neu befüllt.
+ */
+let azubiWeekCaps = new Map<string, Map<string, number>>();
+
+/** Wochendecke in Minuten – nur Azubis haben eine (optional für eine bestimmte Woche). */
+function weeklyCapMinutes(employee: Employee, weekKey?: string): number | null {
   if (employee.employmentType !== "AZUBI") return null;
+  if (weekKey !== undefined) {
+    const perWeek = azubiWeekCaps.get(employee.id)?.get(weekKey);
+    if (perWeek !== undefined) return perWeek;
+  }
+  // „Giờ làm ở quán / tuần" (Mai Sen) ersetzt die allgemeine 40-h-Decke.
+  const weekly = employee.azubi?.workWeeklyHours;
+  if (weekly && weekly > 0) return Math.round(Math.min(weekly, AZUBI_HOURS_OUT_OF_TERM) * 60);
   return Math.round(AZUBI_HOURS_OUT_OF_TERM * 60);
 }
 
@@ -688,7 +728,13 @@ function matchesEmployeeDayRules(
  * Tempo Rest/Tage, am Wochenende etwas länger.
  */
 function desiredWeeklyDayCap(state: SchedulerState, employee: Employee): number {
-  const n = employee.desiredDaysPerWeek;
+  // Mai Sen: Azubis haben immer 2 Ruhetage – Arbeitstage = 5 – Schultage,
+  // solange „Số ngày làm/tuần" nicht von Hand gesetzt ist.
+  const n =
+    employee.desiredDaysPerWeek ??
+    (state.storeId === "maisen" && employee.employmentType === "AZUBI"
+      ? azubiWorkDaysPerWeek(employee.azubi)
+      : undefined);
   if (!n || n <= 0) return Number.POSITIVE_INFINITY;
 
   const weekKeys = new Set<string>();
@@ -860,8 +906,8 @@ const RIGID_ALLOWED_HOURS: Record<Employee["employmentType"], readonly number[]>
  * staut sich der Monatsrest auf den angeschnittenen Rand-Wochen (z.B. ein
  * Samstag am Monatsanfang mit drei 9,5-h-Azubis).
  */
-function rigidWeeklyCapMinutes(employee: Employee): number | null {
-  const cap = weeklyCapMinutes(employee);
+function rigidWeeklyCapMinutes(employee: Employee, weekKey?: string): number | null {
+  const cap = weeklyCapMinutes(employee, weekKey);
   return cap === null ? null : cap + AZUBI_WEEKLY_TARGET_FLEX_HOURS * 60;
 }
 
@@ -874,8 +920,10 @@ function planRigidHours(
   const target = employee.targetMinutes / 60;
   const minH = RIGID_MIN_HOURS[employee.employmentType];
   const dayMax = (d: string) => Math.min(MAX_DAILY_MINUTES, maxPaidForDay(state.dayOf(d))) / 60;
-  const weekCapMin = rigidWeeklyCapMinutes(employee);
-  const weekCap = weekCapMin === null ? Number.POSITIVE_INFINITY : weekCapMin / 60;
+  const weekCapOf = (k: string) => {
+    const min = rigidWeeklyCapMinutes(employee, k);
+    return min === null ? Number.POSITIVE_INFINITY : min / 60;
+  };
 
   const fixed = new Map<string, number>();
   let plan = new Map<string, number>();
@@ -900,7 +948,8 @@ function planRigidHours(
       const k = weekKeyOf(d);
       byWeek.set(k, [...(byWeek.get(k) ?? []), d]);
     }
-    for (const days of byWeek.values()) {
+    for (const [k, days] of byWeek) {
+      const weekCap = weekCapOf(k);
       const sum = days.reduce((a, d) => a + plan.get(d)!, 0);
       if (sum <= weekCap + 1e-9) continue;
       const fixedSum = days.filter((d) => fixed.has(d)).reduce((a, d) => a + fixed.get(d)!, 0);
@@ -958,7 +1007,7 @@ function placeRigidShifts(state: SchedulerState): void {
         : Math.min(10, Math.max(RIGID_MIN_HOURS[employee.employmentType], (remaining / 60) * share));
 
       let dayCapMinutes = maxPaidForDay(state.dayOf(isoDate));
-      const weekCap = rigidWeeklyCapMinutes(employee);
+      const weekCap = rigidWeeklyCapMinutes(employee, weekKeyOf(isoDate));
       if (weekCap !== null) {
         const used = state.weekMinutes.get(employee.id)!.get(weekKeyOf(isoDate)) ?? 0;
         dayCapMinutes = Math.min(dayCapMinutes, weekCap - used);
@@ -1076,7 +1125,7 @@ function placeOneShift(state: SchedulerState, employee: Employee): boolean {
     if (maxPaidForDay(day) === 0) continue;
     if (consecutiveRunLengthWith(worked, isoDate) > 6) continue;
     const weekKey = weekKeyOf(isoDate);
-    if (weekCap !== null && (weekUsed.get(weekKey) ?? 0) >= weekCap) continue;
+    if (weekCap !== null && (weekUsed.get(weekKey) ?? 0) >= (weeklyCapMinutes(employee, weekKey) ?? weekCap)) continue;
     eligibleByWeek.set(weekKey, (eligibleByWeek.get(weekKey) ?? 0) + 1);
     if (state.isThienlong) {
       eligibleWeightSum += thienlongDateWeight(isoDate, state.holidays.has(isoDate), state.storeId);
@@ -1143,7 +1192,7 @@ function placeOneShift(state: SchedulerState, employee: Employee): boolean {
     // Azubi-Wochendecke: was in dieser Woche noch frei ist.
     let dayCapMinutes = maxPaidForDay(day);
     if (weekCap !== null) {
-      const free = weekCap - (weekUsed.get(weekKey) ?? 0);
+      const free = (weeklyCapMinutes(employee, weekKey) ?? weekCap) - (weekUsed.get(weekKey) ?? 0);
       if (free <= 0) continue; // Woche ist voll
       dayCapMinutes = Math.min(dayCapMinutes, free);
     }
@@ -1295,7 +1344,7 @@ function extendExistingShiftsToTargets(
             MAX_DAILY_MINUTES,
             ownShiftRangeMinutes(employee)?.max ?? Infinity,
           );
-          const weekCap = weeklyCapMinutes(employee);
+          const weekCap = weeklyCapMinutes(employee, weekKeyOf(shift.date));
           const weekUsed = state.weekMinutes.get(employee.id)?.get(weekKeyOf(shift.date)) ?? 0;
           const weekCapacity = weekCap === null
             ? Number.POSITIVE_INFINITY
@@ -1430,7 +1479,7 @@ function repairThienlongStaffing(state: SchedulerState): void {
             (weekMinutes.get(toWeek) ?? 0) +
             shift.paidMinutes -
             (fromWeek === toWeek ? shift.paidMinutes : 0);
-          if (usedAfterMove > weekCap) continue;
+          if (usedAfterMove > (weeklyCapMinutes(employee, toWeek) ?? weekCap)) continue;
         }
 
         const before = thienlongDateCost(state, from) + thienlongDateCost(state, to);
@@ -1510,7 +1559,7 @@ function repairDemand(state: SchedulerState, employeesById: Map<string, Employee
             (weekMinutes.get(toWeek) ?? 0) +
             shift.paidMinutes -
             (fromWeek === toWeek ? shift.paidMinutes : 0);
-          if (usedAfterMove > weekCap) continue;
+          if (usedAfterMove > (weeklyCapMinutes(employee, toWeek) ?? weekCap)) continue;
         }
         // 6-Tage-Regel prüfen.
         if (consecutiveRunLengthWith(trial, to) > 6) continue;
@@ -1966,7 +2015,7 @@ function repairRoleGaps(state: SchedulerState): boolean {
           return n;
         };
         const weekOk = (e: Employee, extra: number) => {
-          const weekCap = weeklyCapMinutes(e);
+          const weekCap = weeklyCapMinutes(e, weekKeyOf(date));
           if (weekCap === null) return true;
           const used = state.weekMinutes.get(e.id)!.get(weekKeyOf(date)) ?? 0;
           return used + extra <= weekCap + AZUBI_WEEKLY_TARGET_FLEX_HOURS * 60;
@@ -2135,7 +2184,7 @@ function repairRoleGaps(state: SchedulerState): boolean {
             removeShift(state, b);
             applyShift(state, aNew);
             applyShift(state, bNew);
-            const weekCapA = weeklyCapMinutes(ea);
+            const weekCapA = weeklyCapMinutes(ea, weekKeyOf(date));
             const weekUsedA = state.weekMinutes.get(ea.id)!.get(weekKeyOf(date)) ?? 0;
             const weekFine = weekCapA === null || weekUsedA <= weekCapA + AZUBI_WEEKLY_TARGET_FLEX_HOURS * 60;
             const ok = roleGapsOn(date, role) <= gapsBefore && weekFine &&
@@ -2283,8 +2332,10 @@ function rebalanceForStandardShifts(state: SchedulerState): void {
   const weekOk = (e: Employee) => {
     const cap = weeklyCapMinutes(e);
     if (cap === null) return true;
-    const limit = cap + AZUBI_WEEKLY_TARGET_FLEX_HOURS * 60;
-    for (const minutes of state.weekMinutes.get(e.id)!.values()) if (minutes > limit) return false;
+    for (const [k, minutes] of state.weekMinutes.get(e.id)!) {
+      const limit = (weeklyCapMinutes(e, k) ?? cap) + AZUBI_WEEKLY_TARGET_FLEX_HOURS * 60;
+      if (minutes > limit) return false;
+    }
     return true;
   };
 
@@ -2754,7 +2805,7 @@ function repairRoleDayPresence(state: SchedulerState): void {
           trial.delete(donor);
           if (consecutiveRunLengthWith(trial, date) > 6) continue;
           if (exceedsWeeklyDayCap(state, emp, donor, date)) continue;
-          const weekCap = weeklyCapMinutes(emp);
+          const weekCap = weeklyCapMinutes(emp, weekKeyOf(date));
           if (weekCap !== null) {
             const wm = state.weekMinutes.get(emp.id)!;
             const used =
@@ -3049,6 +3100,7 @@ export function generateSchedule(input: GenerateInput): Shift[] {
   const holidays = input.holidays ?? holidaysOf(year, input.holidayState ?? "BW");
   const overrides = input.overrides ?? {};
   const isThienlong = usesRolePlanning(input.storeId);
+  azubiWeekCaps = buildAzubiWeekCaps(input);
 
   const effKeyOf = (isoDate: string): WeekdayKey => effectiveWeekdayKey(isoDate, holidays);
   const dayOf = (isoDate: string): ResolvedDay => resolveDay(workHours, isoDate, holidays, overrides);

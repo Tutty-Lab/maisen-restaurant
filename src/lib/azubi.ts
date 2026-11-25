@@ -8,6 +8,7 @@ import {
   AZUBI_MONTHLY_WARNING_HOURS,
   type AzubiConfig,
   type Employee,
+  type WeekdayName,
 } from "../types";
 
 /** Standard aus der bisherigen Vorgabe 38,5 h/Woche mal vier Wochen. */
@@ -121,6 +122,8 @@ function normalizedAzubiConfig(cfg: AzubiConfig | undefined): AzubiConfig {
     ...(weekly && { schoolWeeklyStart: weekly.start, schoolWeeklyEnd: weekly.end }),
     schoolDays: [...(source.schoolDays ?? [])],
     monthlyHoursOutOfTerm: monthlyHoursFrom(source),
+    ...(Number.isFinite(source.workWeeklyHours) &&
+      (source.workWeeklyHours ?? 0) > 0 && { workWeeklyHours: normalizeHours(source.workWeeklyHours, 0) }),
     ...(monthlyHoursByMonth && { monthlyHoursByMonth }),
     ...(workMonthHoursByMonth && { workMonthHoursByMonth }),
   };
@@ -280,9 +283,90 @@ export function azubiMonthlyHoursOverride(
   return azubiConfigOf(cfg).monthlyHoursByMonth?.[azubiMonthKey(year, month)];
 }
 
-/** Arbeitsmonats-Soll (ohne Schulzeit): Monatswert oder allgemeiner Wert. */
-function azubiWorkMonthHours(cfg: AzubiConfig, year: number, month: number): number {
-  return cfg.workMonthHoursByMonth?.[azubiMonthKey(year, month)] ?? azubiMonthlyHoursOutOfTerm(cfg);
+/**
+ * Arbeitstage je Woche eines Azubis: 7 Tage – 2 Ruhetage – Schultage
+ * („Vừa học vừa làm"). 1. Lehrjahr mit 2 Schultagen → 3, 2. Lehrjahr mit
+ * 1 Schultag → 4, ohne feste Schultage → 5.
+ */
+export function azubiWorkDaysPerWeek(cfg: AzubiConfig | undefined): number {
+  const normalized = azubiConfigOf(cfg);
+  const school =
+    normalized.inSchoolTerm && normalized.schoolMode === "weekly" ? (normalized.schoolWeekdays ?? []).length : 0;
+  return Math.max(1, 5 - school);
+}
+
+function isoOfDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Wochen (Mo–So), die den Monat berühren, mit verfügbaren Tagen im Monat und in
+ * der ganzen Woche (verfügbar = Laden offen und kein fester Schultag).
+ */
+export function azubiWeekShares(
+  cfg: AzubiConfig | undefined,
+  year: number,
+  month: number,
+  closedWeekdays: readonly WeekdayName[] = [],
+): { monday: string; inMonth: number; full: number }[] {
+  const normalized = azubiConfigOf(cfg);
+  const available = (d: Date) => {
+    const weekday = WEEKDAY_BY_JS_DAY[d.getDay()];
+    if (closedWeekdays.includes(weekday)) return false;
+    return !isAzubiWeeklySchoolDate(normalized, isoOfDate(d));
+  };
+  const first = new Date(year, month - 1, 1);
+  const last = new Date(year, month, 0);
+  const cursor = new Date(first);
+  cursor.setDate(cursor.getDate() - ((cursor.getDay() + 6) % 7));
+  const weeks: { monday: string; inMonth: number; full: number }[] = [];
+  while (cursor <= last) {
+    let full = 0;
+    let inMonth = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(cursor);
+      d.setDate(cursor.getDate() + i);
+      if (!available(d)) continue;
+      full += 1;
+      if (d >= first && d <= last) inMonth += 1;
+    }
+    weeks.push({ monday: isoOfDate(cursor), inMonth, full });
+    cursor.setDate(cursor.getDate() + 7);
+  }
+  return weeks;
+}
+
+/**
+ * Monatsstunden aus „Giờ làm / tuần": jede Woche zählt anteilig – verfügbare
+ * Tage im Monat ÷ verfügbare Tage der ganzen Woche. Volle Wochen bekommen genau
+ * die Wochenstunden. Je Woche auf halbe Stunden gerundet (wie die Wochendecken
+ * im Planer), damit Monat und Wochen exakt zusammenpassen.
+ */
+export function azubiMonthHoursFromWeekly(
+  cfg: AzubiConfig | undefined,
+  year: number,
+  month: number,
+  closedWeekdays: readonly WeekdayName[] = [],
+): number {
+  const weekly = azubiConfigOf(cfg).workWeeklyHours ?? 0;
+  if (weekly <= 0) return 0;
+  return azubiWeekShares(cfg, year, month, closedWeekdays).reduce(
+    (sum, w) => sum + (w.full > 0 ? Math.round(((weekly * w.inMonth) / w.full) * 2) / 2 : 0),
+    0,
+  );
+}
+
+/** Arbeitsmonats-Soll (ohne Schulzeit): Monatswert, sonst aus Wochenstunden, sonst allgemein. */
+function azubiWorkMonthHours(
+  cfg: AzubiConfig,
+  year: number,
+  month: number,
+  closedWeekdays: readonly WeekdayName[] = [],
+): number {
+  const override = cfg.workMonthHoursByMonth?.[azubiMonthKey(year, month)];
+  if (override !== undefined) return override;
+  if ((cfg.workWeeklyHours ?? 0) > 0) return azubiMonthHoursFromWeekly(cfg, year, month, closedWeekdays);
+  return azubiMonthlyHoursOutOfTerm(cfg);
 }
 
 /**
@@ -297,6 +381,7 @@ export function azubiMonthlyHoursForMonth(
   cfg: AzubiConfig | undefined,
   year: number,
   month: number,
+  closedWeekdays: readonly WeekdayName[] = [],
 ): number {
   const normalized = azubiConfigOf(cfg);
   const mode = azubiMonthMode(normalized, year, month);
@@ -309,7 +394,7 @@ export function azubiMonthlyHoursForMonth(
   if (mode === "mixed") {
     return normalized.monthlyHoursByMonth?.[azubiMonthKey(year, month)] ?? 0;
   }
-  return azubiWorkMonthHours(normalized, year, month);
+  return azubiWorkMonthHours(normalized, year, month, closedWeekdays);
 }
 
 /** Status shown on the printed/exported timesheet for the selected month. */
@@ -340,8 +425,9 @@ export function azubiMonthlyMinutes(
   cfg: AzubiConfig | undefined,
   year: number,
   month: number,
+  closedWeekdays: readonly WeekdayName[] = [],
 ): number {
-  return Math.round(azubiMonthlyHoursForMonth(cfg, year, month) * 60);
+  return Math.round(azubiMonthlyHoursForMonth(cfg, year, month, closedWeekdays) * 60);
 }
 
 /** Soll eines Mitarbeiters - bei Azubis aus der Konfiguration, sonst eingetragen. */
@@ -359,13 +445,14 @@ export function withAutomaticAzubiTarget(
   employee: Employee,
   year: number,
   month: number,
+  closedWeekdays: readonly WeekdayName[] = [],
 ): Employee {
   if (employee.employmentType !== "AZUBI") return employee;
 
   const azubi = azubiConfigOf(employee.azubi);
   // Keine automatische Kürzung (Ein-/Austritt, Schulbeginn): der Chef trägt
   // das Soll für solche Monate selbst ein.
-  const targetMinutes = azubiMonthlyMinutes(azubi, year, month);
+  const targetMinutes = azubiMonthlyMinutes(azubi, year, month, closedWeekdays);
   const oldConfig = employee.azubi;
   const configChanged =
     !oldConfig ||
@@ -377,6 +464,7 @@ export function withAutomaticAzubiTarget(
     oldConfig.schoolWeeklyStart !== azubi.schoolWeeklyStart ||
     oldConfig.schoolWeeklyEnd !== azubi.schoolWeeklyEnd ||
     oldConfig.monthlyHoursOutOfTerm !== azubi.monthlyHoursOutOfTerm ||
+    oldConfig.workWeeklyHours !== azubi.workWeeklyHours ||
     !monthlyHoursMapsEqual(oldConfig.monthlyHoursByMonth, azubi.monthlyHoursByMonth) ||
     !monthlyHoursMapsEqual(oldConfig.workMonthHoursByMonth, azubi.workMonthHoursByMonth) ||
     oldConfig.weeklyHoursInTerm !== undefined ||

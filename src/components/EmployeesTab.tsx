@@ -25,9 +25,10 @@ import {
   azubiMonthKey,
   azubiMonthMode,
   azubiSchoolTermRange,
+  azubiMonthHoursFromWeekly,
+  azubiWorkDaysPerWeek,
   azubiSchoolBlocks,
   azubiMonthlyHoursNeedWarning,
-  azubiMonthlyHoursForMonth,
   azubiTermMonths,
 } from "../lib/azubi";
 import {
@@ -36,6 +37,7 @@ import {
   WEEKDAY_ORDER,
 } from "../lib/fixedDaysOff";
 import { allowsRoleSwitch, fixedDaysOffRequired, usesRolePlanning } from "../lib/stores";
+import { closedWeekdaysOf } from "../lib/workHours";
 
 // text-base (16px) auf dem Handy: iOS zoomt sonst beim Tippen hinein.
 const inputClass =
@@ -392,6 +394,7 @@ function EmployeesList({ store }: { store: UseScheduleReturn }) {
           year={schedule.year}
           month={schedule.month}
           storeId={store.storeId}
+          closedWeekdays={closedWeekdaysOf(schedule.workHours)}
           onClose={() => setOffen(null)}
           onSave={(felder) => {
             if (bearbeitet) updateEmployee(bearbeitet.id, felder);
@@ -423,7 +426,8 @@ function EmployeeSummaryRow({
 }) {
   const isAzubi = emp.employmentType === "AZUBI";
   const azubiConfig = isAzubi ? azubiConfigOf(emp.azubi) : null;
-  const azubiMonthlyHours = azubiConfig ? azubiMonthlyHoursForMonth(azubiConfig, year, month) : 0;
+  // Azubi: Monatssoll ist bereits berechnet (inkl. „Giờ / tuần" und Ruhetag des Ladens).
+  const azubiMonthlyHours = azubiConfig ? emp.targetMinutes / 60 : 0;
   const fullMonth = isAzubi ? azubiMonthlyHours * 60 : fullMonthTargetMinutes(emp);
   const stunden = fullMonthTargetMinutes(emp) / 60;
   const info = isAzubi
@@ -592,6 +596,7 @@ function EmployeeSheet({
   year,
   month,
   storeId,
+  closedWeekdays = [],
   onClose,
   onSave,
   onDelete,
@@ -600,6 +605,7 @@ function EmployeeSheet({
   year: number;
   month: number;
   storeId: string;
+  closedWeekdays?: WeekdayName[];
   onClose: () => void;
   onSave: (felder: Omit<Employee, "id">) => void;
   onDelete?: () => void;
@@ -867,11 +873,15 @@ function EmployeeSheet({
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <FieldLabel>Mức chung / tháng</FieldLabel>
+                    <FieldLabel>Giờ làm ở quán / tuần</FieldLabel>
                     <HoursInput
                       decimal
-                      value={String(azubiGeneral)}
-                      onChange={(v) => setAzubi({ monthlyHoursOutOfTerm: Math.max(0, Number(v) || 0) })}
+                      placeholder="VD 24"
+                      warn={!(d.azubi.workWeeklyHours && d.azubi.workWeeklyHours > 0)}
+                      value={d.azubi.workWeeklyHours ? String(d.azubi.workWeeklyHours) : ""}
+                      onChange={(v) =>
+                        setAzubi({ workWeeklyHours: Number(v) > 0 ? Math.min(40, Number(v)) : undefined })
+                      }
                     />
                   </div>
                   <div>
@@ -900,17 +910,39 @@ function EmployeeSheet({
                   </div>
                 </div>
                 <p className="text-xs text-slate-500">
+                  {d.azubi.workWeeklyHours ? (
+                    <>
+                      Làm <b>{azubiWorkDaysPerWeek(d.azubi)} ngày/tuần</b>, nghỉ 2 ngày
+                      {azubiWorkDaysPerWeek(d.azubi) < 5 ? `, đi học ${5 - azubiWorkDaysPerWeek(d.azubi)} ngày` : ""}.
+                      {azubiMode === "work" && (
+                        <>
+                          {" "}Tháng {month}/{year}: <b>{azubiMonthHoursFromWeekly(d.azubi, year, month, closedWeekdays)}h</b>
+                          {" "}(tuần đầu/cuối tháng tính theo số ngày trong tháng).
+                        </>
+                      )}{" "}
+                    </>
+                  ) : (
+                    <>Nhập giờ làm mỗi tuần, ví dụ năm 1: 24h (3 ngày), năm 2: 32h (4 ngày). Chưa nhập thì dùng {azubiGeneral}h/tháng. </>
+                  )}
                   {azubiMode === "mixed"
                     ? "Tháng này vừa đi học vừa đi làm: chỉ xếp ca ngày không đi học. App không tự tính giờ – hãy nhập."
                     : azubiMode === "school" && hasTermDates
                       ? "Đi học cả tháng – không xếp ca."
-                      : `Ô tháng ${month}/${year} để trống = dùng mức chung.`}
+                      : `Ô tháng ${month}/${year} để trống = tính theo tuần.`}
                   {azubiWarning && ` ⚠ trên ${AZUBI_MONTHLY_WARNING_HOURS}h/tháng, lịch có thể khó xếp.`}
                 </p>
               </>
             )}
             <div>
-              <FieldLabel hint="bỏ trống = tự động">Số ngày làm / tuần</FieldLabel>
+              <FieldLabel
+                hint={
+                  isAzubi && storeId === "maisen"
+                    ? `Tự = ${azubiWorkDaysPerWeek(d.azubi)} ngày (nghỉ 2 ngày, trừ ngày đi học)`
+                    : "bỏ trống = tự động"
+                }
+              >
+                Số ngày làm / tuần
+              </FieldLabel>
               <div className="grid grid-cols-8 gap-1">
                 {["", "1", "2", "3", "4", "5", "6", "7"].map((n) => (
                   <button
@@ -1180,8 +1212,8 @@ function EmployeeSheet({
                   </div>
                   <p className="text-xs text-slate-500">
                     Những ngày này app <b>không xếp ca</b> (để trống ngày = áp dụng luôn). Ngày đi học cũng tính
-                    là ngày làm, nên hãy nhập <b>giờ làm ở quán</b> vào ô “Mức chung / tháng” ở trên – ví dụ
-                    39h/tuần: học 1 ngày → khoảng 135h, học 2 ngày → khoảng 101h.
+                    là ngày làm: Azubi luôn nghỉ 2 ngày, nên học 2 ngày → làm 3 ngày, học 1 ngày → làm 4 ngày.
+                    Nhập <b>giờ làm ở quán / tuần</b> ở mục Giờ làm phía trên.
                   </p>
                 </>
               )}

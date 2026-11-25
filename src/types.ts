@@ -52,6 +52,13 @@ export type AzubiConfig = {
   schoolWeeklyEnd?: string;
   /** Vom Chef gesetztes Monatssoll ausserhalb der Schulzeit. */
   monthlyHoursOutOfTerm?: number;
+  /**
+   * „Giờ làm ở quán / tuần" (Mai Sen): Stunden im Laden pro Woche, z. B. 24 h
+   * im 1. Lehrjahr (3 Arbeitstage). Ist der Wert gesetzt, ergibt sich das
+   * Monatssoll daraus (Teilwochen anteilig nach verfügbaren Tagen) und die
+   * Wochendecke ist dieser Wert statt 40 h.
+   */
+  workWeeklyHours?: number;
   /** Exaktes Monatssoll fuer gemischte Schul-/Arbeitsmonate, Schluessel yyyy-MM. */
   monthlyHoursByMonth?: Record<string, number>;
   /**

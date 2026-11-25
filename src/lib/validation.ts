@@ -203,8 +203,12 @@ export function validateSchedule(
     const maxRun = maxConsecutiveRun(empShifts.map((s) => s.date));
 
     if (emp.employmentType === "AZUBI") {
+      // „Giờ làm ở quán / tuần" gesetzt → das ist die Wochendecke (höchstens 40 h).
+      const ownWeekly = emp.azubi?.workWeeklyHours;
       const weeklyCapMinutes = Math.round(
-        (AZUBI_HOURS_OUT_OF_TERM + AZUBI_WEEKLY_TARGET_FLEX_HOURS) * 60,
+        (ownWeekly && ownWeekly > 0
+          ? Math.min(ownWeekly, AZUBI_HOURS_OUT_OF_TERM)
+          : AZUBI_HOURS_OUT_OF_TERM + AZUBI_WEEKLY_TARGET_FLEX_HOURS) * 60,
       );
       const minutesByWeek = new Map<string, number>();
 

@@ -4,13 +4,14 @@
 // ============================================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Employee, Schedule, Shift, ShiftSegment } from "../types";
+import type { Employee, Schedule, Shift, ShiftSegment, WeekdayName } from "../types";
 import { azubiMonthCapacityMinutes, generateSchedule } from "../lib/scheduler";
 import { validateSchedule, type ValidationResult } from "../lib/validation";
 import { clearState, loadState, saveState, type PersistedState } from "../lib/storage";
 import { isRemoteConfigured, loadRemote, saveRemote, type RemoteStatus } from "../lib/remote";
 import { createManualShift, updateShiftPieces } from "../lib/shiftOps";
 import {
+  closedWeekdaysOf,
   defaultWorkHoursForStore,
   normalizeWorkHours,
   workHoursVersionForStore,
@@ -60,13 +61,18 @@ function overridesToMap(list: DateOverride[]): OverrideMap {
   return map;
 }
 
-function normalizeEmployee(employee: Employee, year: number, month: number): Employee {
+function normalizeEmployee(
+  employee: Employee,
+  year: number,
+  month: number,
+  closedWeekdays: readonly WeekdayName[] = [],
+): Employee {
   // „Lịch 2 quán" gibt es nicht mehr – Altdaten verlieren das Feld beim Laden.
   const { fixedStoreWeekPattern: _removed, ...rest } = employee as Employee & {
     fixedStoreWeekPattern?: boolean;
   };
   return withEmploymentPeriodTarget(
-    withAutomaticAzubiTarget(normalizedFixedDaysOff(rest), year, month),
+    withAutomaticAzubiTarget(normalizedFixedDaysOff(rest), year, month, closedWeekdays),
     year,
     month,
   );
@@ -79,6 +85,10 @@ function normalizeSchedule(raw: Schedule | undefined, store: StoreConfig): Sched
   const year = raw.year ?? base.year;
   const month = raw.month ?? base.month;
   const hoursVersion = workHoursVersionForStore(store.id);
+  const workHours =
+    raw.hoursVersion === hoursVersion
+      ? normalizeWorkHours(raw.workHours, defaultWorkHoursForStore(store.id))
+      : defaultWorkHoursForStore(store.id);
   return {
     // Name, Adresse und Bundesland kommen IMMER aus stores.ts – so kann ein
     // alter Speicherstand nicht die Daten der falschen Filiale mitschleppen.
@@ -91,14 +101,11 @@ function normalizeSchedule(raw: Schedule | undefined, store: StoreConfig): Sched
     // Ältere Stände haben noch die alten Öffnungszeiten (Mo–Do ohne
     // Mittagsschließung, Sa ab 11:00). Einmalig auf die aktuelle Vorgabe
     // heben – sonst verdeckt der gespeicherte Stand die neuen Zeiten für immer.
-    workHours:
-      raw.hoursVersion === hoursVersion
-        ? normalizeWorkHours(raw.workHours, defaultWorkHoursForStore(store.id))
-        : defaultWorkHoursForStore(store.id),
+    workHours,
     surchargeConfig: normalizeSurchargeConfig(raw.surchargeConfig),
     dateOverrides: Array.isArray(raw.dateOverrides) ? raw.dateOverrides : [],
     employees: (raw.employees ?? []).map((employee) =>
-      normalizeEmployee(employee, year, month),
+      normalizeEmployee(employee, year, month, closedWeekdaysOf(workHours)),
     ),
     shifts: raw.shifts ?? [],
     archive: raw.archive && typeof raw.archive === "object" ? raw.archive : {},
@@ -221,7 +228,7 @@ export function useSchedule() {
       let changed = false;
       const employees = s.employees.map((e) => {
         const next = withEmploymentPeriodTarget(
-          withAutomaticAzubiTarget(e, s.year, s.month),
+          withAutomaticAzubiTarget(e, s.year, s.month, closedWeekdaysOf(s.workHours)),
           s.year,
           s.month,
         );
@@ -302,7 +309,7 @@ export function useSchedule() {
               },
             },
             s.year,
-            s.month,
+            s.month, closedWeekdaysOf(s.workHours),
           );
         }),
       }));
@@ -349,7 +356,7 @@ export function useSchedule() {
               data.employmentType === "TEILZEIT" ? undefined : data.fixedDaysOff ?? [],
           },
           s.year,
-          s.month,
+          s.month, closedWeekdaysOf(s.workHours),
         );
         return { ...s, employees: [...s.employees, emp] };
       });
@@ -363,7 +370,7 @@ export function useSchedule() {
       ...s,
       employees: s.employees.map((e) =>
         e.id === id
-          ? normalizeEmployee({ ...e, ...patch }, s.year, s.month)
+          ? normalizeEmployee({ ...e, ...patch }, s.year, s.month, closedWeekdaysOf(s.workHours))
           : e,
       ),
     }));
@@ -373,7 +380,7 @@ export function useSchedule() {
   const importEmployees = useCallback((incoming: Employee[], mode: "add" | "replace") => {
     setSchedule((s) => {
       const employees = mergeEmployees(s.employees, incoming, mode).map((e) =>
-        normalizeEmployee(e, s.year, s.month),
+        normalizeEmployee(e, s.year, s.month, closedWeekdaysOf(s.workHours)),
       );
       const ids = new Set(employees.map((e) => e.id));
       return { ...s, employees, shifts: s.shifts.filter((sh) => ids.has(sh.employeeId)) };
@@ -407,7 +414,7 @@ export function useSchedule() {
           // Direkt nach einem Monatswechsel sind die Monats-Solls (Azubi,
           // Ein-/Austritt) evtl. noch nicht nachgezogen – hier sicher berechnen.
           employees: withMonthRoles(
-            employees.map((e) => normalizeEmployee(e, schedule.year, schedule.month)),
+            employees.map((e) => normalizeEmployee(e, schedule.year, schedule.month, closedWeekdaysOf(schedule.workHours))),
             schedule.year,
             schedule.month,
           ),
@@ -447,7 +454,7 @@ export function useSchedule() {
       workHours: schedule.workHours,
       overrides: overridesToMap(schedule.dateOverrides),
       holidayState: schedule.holidayState,
-      employees: schedule.employees.map((e) => normalizeEmployee(e, schedule.year, schedule.month)),
+      employees: schedule.employees.map((e) => normalizeEmployee(e, schedule.year, schedule.month, closedWeekdaysOf(schedule.workHours))),
     }),
     [schedule.year, schedule.month, storeId, schedule.workHours, schedule.dateOverrides, schedule.holidayState, schedule.employees],
   );
