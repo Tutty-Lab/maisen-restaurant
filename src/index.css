@@ -3,7 +3,20 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  /* „only light": verhindert, dass Browser/WebViews im Dunkelmodus die App
+     automatisch abdunkeln (Eingabefelder wurden sonst schwarz). */
+  color-scheme: only light;
+}
+
+@layer base {
+  /* Eingabefelder bekommen IMMER einen hellen Grund – Tailwinds Preflight
+     macht sie sonst transparent, und im Dunkelmodus erschienen sie schwarz. */
+  input,
+  select,
+  textarea {
+    background-color: #fff;
+    color: #1e293b;
+  }
 }
 
 body {
