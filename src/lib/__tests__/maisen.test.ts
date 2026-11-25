@@ -127,12 +127,13 @@ describe("Mai Sen: two owners are always there and stand in as Bồi", () => {
     expect(warnings.some((e) => e.message.includes("chủ đứng Bồi"))).toBe(true);
   });
 
-  it("still requires a cook at every open hour", () => {
-    // Beide Köche an einem Freitag gestrichen → Bếp fehlt; das bleibt ein Fehler.
+  it("a missing cook is covered by the owners too (note, not an error)", () => {
+    // Beide Köche an einem Freitag gestrichen → Bếp fehlt; die Chefs springen ein.
     const date = "2026-12-04";
     const noCook = planned.filter((s) => !(s.date === date && (s.employeeId === "k1" || s.employeeId === "k3")));
-    const check = validateSchedule(thin, noCook, ctx).errors.filter((e) => e.severity !== "warning");
-    expect(check.some((e) => e.date === date && e.message.includes("không có Bếp"))).toBe(true);
+    const all = validateSchedule(thin, noCook, ctx).errors;
+    expect(all.filter((e) => e.severity !== "warning" && e.message.includes("Bếp"))).toEqual([]);
+    expect(all.some((e) => e.date === date && e.severity === "warning" && e.message.includes("chủ đứng Bếp"))).toBe(true);
   });
 });
 

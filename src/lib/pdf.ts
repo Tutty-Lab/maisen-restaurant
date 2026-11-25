@@ -541,6 +541,42 @@ export function deliver(blob: Blob, filename: string): void {
   }, 60_000);
 }
 
+/** iPhone/iPad/Android – dort lädt der Browser Dateien oft nicht herunter, sondern öffnet sie. */
+export function isMobileDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  if (/iPhone|iPad|iPod|Android/i.test(ua)) return true;
+  // iPadOS meldet sich als „Macintosh", hat aber Touch.
+  return /Macintosh/i.test(ua) && (navigator.maxTouchPoints ?? 0) > 1;
+}
+
+export type SaveResult = "shared" | "downloaded" | "cancelled";
+
+/**
+ * PDF speichern: am Handy über das Teilen-Menü („Lưu vào Tệp", Zalo, Drucken …),
+ * sonst als Download. Das Teilen-Menü braucht einen frischen Tipp – deshalb
+ * zeigt die Oberfläche am Handy nach dem Erzeugen einen eigenen Knopf.
+ */
+export async function saveOrSharePdf(file: File): Promise<SaveResult> {
+  const nav = typeof navigator !== "undefined" ? navigator : undefined;
+  if (isMobileDevice() && nav?.canShare?.({ files: [file] }) && nav.share) {
+    try {
+      await nav.share({ files: [file], title: file.name });
+      return "shared";
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return "cancelled";
+      // z. B. NotAllowedError ohne Tipp → klassischer Download als Rückfall.
+    }
+  }
+  deliver(file, file.name);
+  return "downloaded";
+}
+
+/** jsPDF-Dokument als Datei (File) für Speichern/Teilen. */
+export function pdfFile(doc: jsPDF, filename: string): File {
+  return new File([doc.output("blob")], filename, { type: "application/pdf" });
+}
+
 /** jsPDF-Dokument als Datei speichern. */
 export function savePdf(doc: jsPDF, filename: string): void {
   deliver(doc.output("blob"), filename);
@@ -562,6 +598,20 @@ export async function buildStundenzettelDoc(params: {
     { dates: params.dates, periodLabel: params.periodLabel },
     params.onProgress,
   );
+}
+
+/** PDF für einen oder mehrere Mitarbeiter bauen – als Datei, ohne sie schon zu speichern. */
+export async function buildStundenzettelFile(params: {
+  schedule: Schedule;
+  employees: Employee[];
+  filename: string;
+  dates?: string[];
+  periodLabel?: string;
+  onProgress?: (done: number, total: number) => void;
+}): Promise<File | null> {
+  if (params.employees.length === 0) return null;
+  const doc = await buildStundenzettelDoc(params);
+  return pdfFile(doc, params.filename);
 }
 
 /** PDF für einen oder mehrere Mitarbeiter bauen und herunterladen. */

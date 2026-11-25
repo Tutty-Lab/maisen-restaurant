@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { UseScheduleReturn } from "../hooks/useSchedule";
 import { StundenzettelPage } from "./StundenzettelPage";
 import { SavedSchedulesButton } from "./SavedSchedules";
-import { exportStundenzettelPdf, safeFileName } from "../lib/pdf";
+import { buildStundenzettelFile, isMobileDevice, safeFileName, saveOrSharePdf } from "../lib/pdf";
 import { weeksOfMonth } from "../lib/weeks";
 
 export function StundenzettelTab({ store }: { store: UseScheduleReturn }) {
@@ -17,6 +17,8 @@ export function StundenzettelTab({ store }: { store: UseScheduleReturn }) {
   const [what, setWhat] = useState<string>("stundenzettel");
   const [pdfBusy, setPdfBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  // Am Handy: fertige Datei, die per eigenem Tipp gespeichert/geteilt wird.
+  const [readyFile, setReadyFile] = useState<File | null>(null);
 
   const chosenEmployees =
     who === "all" ? schedule.employees : schedule.employees.filter((e) => e.id === who);
@@ -39,12 +41,14 @@ export function StundenzettelTab({ store }: { store: UseScheduleReturn }) {
     if (pdfBusy || !hasSchedule) return;
     setPdfBusy(true);
     setProgress(null);
+    setReadyFile(null);
     try {
+      let file: File | null = null;
       if (what.startsWith("sz-")) {
         const weekStart = what.slice(3);
         const sz = szWeekFor(weekStart);
         if (sz) {
-          await exportStundenzettelPdf({
+          file = await buildStundenzettelFile({
             schedule,
             employees: chosenEmployees,
             filename: `Stundenzettel_${whoTag}_${monthTag}_tuan_${weekStart}.pdf`,
@@ -54,13 +58,17 @@ export function StundenzettelTab({ store }: { store: UseScheduleReturn }) {
           });
         }
       } else {
-        await exportStundenzettelPdf({
+        file = await buildStundenzettelFile({
           schedule,
           employees: chosenEmployees,
           filename: `Stundenzettel_${whoTag}_${monthTag}.pdf`,
           onProgress: (done, total) => setProgress({ done, total }),
         });
       }
+      if (!file) return;
+      // Handy: Knopf „Lưu PDF" zeigen (Teilen-Menü braucht einen frischen Tipp).
+      if (isMobileDevice()) setReadyFile(file);
+      else await saveOrSharePdf(file);
     } catch (err) {
       alert(`Không tạo được PDF: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -138,6 +146,19 @@ export function StundenzettelTab({ store }: { store: UseScheduleReturn }) {
               ⬇ Xuất PDF
             </button>
             {pdfBusy && <span className="text-sm text-slate-500">{progressLabel}</span>}
+            {readyFile && !pdfBusy && (
+              <button
+                type="button"
+                onClick={() => {
+                  void saveOrSharePdf(readyFile).then((r) => {
+                    if (r !== "cancelled") setReadyFile(null);
+                  });
+                }}
+                className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+              >
+                📥 Lưu PDF
+              </button>
+            )}
             {!hasSchedule && !pdfBusy && (
               <span className="text-sm text-amber-600">Chưa có lịch — hãy tạo lịch trước.</span>
             )}
@@ -146,8 +167,8 @@ export function StundenzettelTab({ store }: { store: UseScheduleReturn }) {
 
         <p className="mt-2 text-xs text-slate-500">
           <b>Bảng chấm công (Stundenaufzeichnung)</b> theo mẫu tiếng Đức để nộp — một tờ mỗi người,
-          cả tháng hoặc theo tuần. File .pdf tải thẳng về máy (kẻ bảng nét, không có ngày in / đường
-          link).
+          cả tháng hoặc theo tuần. Máy tính: file .pdf tải thẳng về máy. Điện thoại: bấm <b>Xuất PDF</b>,
+          rồi bấm <b>📥 Lưu PDF</b> → chọn „Lưu vào Tệp" (hoặc gửi Zalo, in…).
         </p>
       </div>
 

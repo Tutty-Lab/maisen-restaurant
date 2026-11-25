@@ -34,10 +34,10 @@ export function usesRolePlanning(storeId: string | undefined): boolean {
 }
 
 /**
- * Mai Sen: zwei Chefs sind immer im Laden (Chef, Nov 2026). Sie springen im
- * Service ein und schließen auf – fehlende Bồi sind daher kein Fehler, sondern
- * nur ein Hinweis „chủ đứng Bồi"; die 2-Leute-Öffnungsregel entfällt. Die
- * Küche muss weiter immer besetzt sein.
+ * Mai Sen: zwei Chefs sind immer im Laden (Chef, Nov 2026). Sie springen in
+ * Küche und Service ein und schließen auf – fehlende Bếp/Bồi sind daher kein
+ * Fehler, sondern nur ein Hinweis „chủ đứng Bếp/Bồi"; die 2-Leute-
+ * Öffnungsregel entfällt.
  */
 export function ownersCoverService(storeId: string | undefined): boolean {
   return storeId === "maisen";

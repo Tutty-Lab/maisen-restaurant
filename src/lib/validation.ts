@@ -389,14 +389,18 @@ function roleErrorsForDay(
 
   const out: ValidationError[] = [];
   for (const g of issues.gaps) {
-    if (g.role === "SERVICE" && ownersCoverService(storeId)) {
+    if (ownersCoverService(storeId)) {
+      const label = roleLabel(g.role);
       out.push({
         date,
         kind: "coverage",
         severity: "warning",
-        message: `Ngày ${date}: không có Bồi lúc ${slotText(g.slots)} → chủ đứng Bồi.`,
-        reason: "Hai chủ luôn có mặt ở quán nên giờ này chủ làm Bồi – không phải lỗi.",
-        suggestion: "Không cần làm gì. Muốn bớt giờ cho chủ thì tăng giờ hoặc thêm một Bồi bán thời gian.",
+        message: `Ngày ${date}: không có ${label} lúc ${slotText(g.slots)} → chủ đứng ${label}.`,
+        reason: `Hai chủ luôn có mặt ở quán nên giờ này chủ làm ${label} – không phải lỗi.`,
+        suggestion:
+          g.role === "KITCHEN"
+            ? "Không cần làm gì. Muốn bớt giờ cho chủ thì tăng giờ cho Bếp hoặc thêm người Bếp."
+            : "Không cần làm gì. Muốn bớt giờ cho chủ thì tăng giờ hoặc thêm một Bồi bán thời gian.",
       });
       continue;
     }
